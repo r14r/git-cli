@@ -26,6 +26,7 @@ sudo just install
 
 Default binary installation path: `/usr/local/bin/git-cli`.
 
+
 ## Update with update-cli
 
 This repository includes `update-cli.yaml` for the Go build/install workflow. The update source itself is configured in `.updater-cli/config.json` as the Git repository:
