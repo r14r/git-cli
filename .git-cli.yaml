@@ -1,0 +1,13 @@
+fail_on: high
+scanners:
+  gitleaks:
+    enabled: true
+    required: true
+  detect-secrets:
+    enabled: true
+    required: true
+  trufflehog:
+    enabled: true
+    required: false
+detect_secrets_baseline: .secrets.baseline
+# gitleaks_config: .gitleaks.toml

@@ -1,0 +1,57 @@
+schemaVersion: 2
+project:
+  name: git-cli
+  type: go
+variables:
+  binary: git-cli
+  repository: https://github.com/r14r/git-cli.git
+  distDir: dist
+workflows:
+  setup:
+    tasks: [install]
+  ci:
+    tasks: [verify]
+tasks:
+  prepare:
+    steps:
+      - name: Download Go modules
+        go:
+          action: mod-download
+  check:
+    requires: [prepare]
+    steps:
+      - name: Vet
+        go:
+          action: vet
+      - name: Test
+        go:
+          action: test
+  build:
+    requires: [check]
+    steps:
+      - name: Build git-cli
+        go:
+          action: build
+          package: ./cmd/git-cli
+          output: "{{ distDir }}/{{ binary }}"
+          args: [-trimpath]
+  verify:
+    requires: [build]
+    steps:
+      - name: Verify binary
+        assert:
+          executable: "{{ distDir }}/{{ binary }}"
+  install:
+    requires: [verify]
+    steps:
+      - name: Install git-cli
+        deploy:
+          source: "{{ distDir }}/{{ binary }}"
+          target: "/usr/local/bin/{{ binary }}"
+          mode: "0755"
+  clean:
+    steps:
+      - name: Clean build artifacts
+        remove:
+          path: "{{ distDir }}"
+          recursive: true

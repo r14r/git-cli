@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 6,
+  "projectName": "git-cli",
+  "source": {
+    "type": "repository",
+    "repository": "https://github.com/r14r/git-cli.git"
+  },
+  "releaseDir": "release",
+  "currentDir": "current",
+  "no parameter": [
+    "check"
+  ],
+  "setup": {
+    "commands": []
+  },
+  "backup": {
+    "directory": "backup",
+    "keep": 3
+  },
+  "retention": {
+    "releases": 5
+  },
+  "sync": {
+    "preserve": [
+      ".git/",
+      ".gitignore",
+      ".venv/",
+      ".env",
+      ".env.*",
+      "data/",
+      "storage/",
+      "uploads/",
+      "media/",
+      "logs/",
+      "var/"
+    ]
+  },
+  "security": {
+    "allowHttp": false,
+    "maxArchiveBytes": 2147483648,
+    "maxUncompressedBytes": 8589934592,
+    "maxFileBytes": 2147483648,
+    "maxEntries": 100000,
+    "maxCompressionRatio": 200
+  },
+  "docker": {
+    "lifecycle": "off"
+  },
+  "healthcheck": {}
+}
