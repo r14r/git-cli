@@ -99,7 +99,7 @@ func HookContent() string {
 set -e
 
 # managed by git-cli precommit
-git-cli security check-staged
+git-cli security "check-staged"
 exec git-cli precommit run
 `
 }
