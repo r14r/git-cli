@@ -45,9 +45,12 @@ func TestDetectFrameworks(t *testing.T) {
 
 func TestHookRunsSecurityBeforePreset(t *testing.T) {
 	h := HookContent()
-	security := strings.Index(h, "git-cli security check-staged")
+	security := strings.Index(h, `git-cli security "check-staged"`)
 	preset := strings.Index(h, "git-cli precommit run")
 	if security < 0 || preset < 0 || security > preset {
 		t.Fatalf("unexpected hook order: %s", h)
+	}
+	if !strings.Contains(h, "managed by git-cli precommit") {
+		t.Fatalf("hook ownership marker missing: %s", h)
 	}
 }
