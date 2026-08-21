@@ -16,6 +16,7 @@ import (
 	"git-cli/internal/config"
 	gitutil "git-cli/internal/git"
 	"git-cli/internal/model"
+	"git-cli/internal/precommit"
 	"git-cli/internal/scanner"
 	"git-cli/internal/ui"
 )
@@ -41,6 +42,8 @@ func (a *App) Run(args []string) int {
 		return 0
 	case "security":
 		return a.securityCommand(args[1:])
+	case "precommit":
+		return a.precommitCommand(args[1:])
 	default:
 		fmt.Fprintf(a.Err, "unknown command: %s\n", args[0])
 		a.help()
@@ -53,10 +56,129 @@ func (a *App) help() {
 
 Usage:
   git-cli security <command>       Secret scanning and commit protection
+  git-cli precommit <options>      Configure/run application pre-commit checks
   git-cli version                  Show version
   git-cli help                     Show help
 
-Run "git-cli security help" for security commands.`)
+Run "git-cli security help" or "git-cli precommit help" for details.`)
+}
+
+func (a *App) precommitCommand(args []string) int {
+	if len(args) == 0 {
+		a.precommitHelp()
+		return 0
+	}
+	if args[0] == "help" || args[0] == "--help" || args[0] == "-h" {
+		a.precommitHelp()
+		return 0
+	}
+	if args[0] == "run" {
+		root, err := gitutil.Root()
+		if err != nil {
+			fmt.Fprintln(a.Err, err)
+			return 2
+		}
+		if err := precommit.Run(root, a.Out, a.Err); err != nil {
+			fmt.Fprintln(a.Err, err)
+			return 1
+		}
+		return 0
+	}
+	if args[0] == "status" {
+		return a.precommitStatus()
+	}
+	if args[0] == "list" {
+		fmt.Fprintln(a.Out, strings.Join(precommit.Supported(), "\n"))
+		return 0
+	}
+
+	fs := flag.NewFlagSet("precommit", flag.ContinueOnError)
+	fs.SetOutput(a.Err)
+	setup := fs.Bool("setup", false, "install pre-commit configuration and hook")
+	preset := fs.String("for", "", "application preset: python|fastapi|django|laravel")
+	scan := fs.Bool("scan", false, "detect application preset from current repository")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if !*setup {
+		fmt.Fprintln(a.Err, "precommit requires --setup, or use run|status|list")
+		return 2
+	}
+	if (*preset == "" && !*scan) || (*preset != "" && *scan) {
+		fmt.Fprintln(a.Err, "use exactly one of --for <preset> or --scan")
+		return 2
+	}
+	root, err := gitutil.Root()
+	if err != nil {
+		fmt.Fprintln(a.Err, err)
+		return 2
+	}
+	selected := *preset
+	if *scan {
+		selected, err = precommit.Detect(root)
+		if err != nil {
+			fmt.Fprintln(a.Err, err)
+			return 2
+		}
+		fmt.Fprintf(a.Out, "Detected application preset: %s\n", selected)
+	}
+	selected, err = precommit.NormalizePreset(selected)
+	if err != nil {
+		fmt.Fprintln(a.Err, err)
+		return 2
+	}
+	hook, err := precommit.Setup(root, selected)
+	if err != nil {
+		fmt.Fprintln(a.Err, err)
+		return 2
+	}
+	cfgPath := filepath.Join(root, config.DefaultFilename)
+	if _, err := os.Stat(cfgPath); errors.Is(err, os.ErrNotExist) {
+		if err := config.WriteDefault(cfgPath); err != nil {
+			fmt.Fprintln(a.Err, err)
+			return 2
+		}
+	}
+	fmt.Fprintf(a.Out, "Installed pre-commit preset: %s\nHook: %s\nConfig: %s\n", selected, hook, filepath.Join(root, precommit.ConfigFilename))
+	return 0
+}
+
+func (a *App) precommitHelp() {
+	fmt.Fprintln(a.Out, `git-cli precommit - application-aware pre-commit setup
+
+Usage:
+  git-cli precommit --setup --for python
+  git-cli precommit --setup --for fastapi
+  git-cli precommit --setup --for django
+  git-cli precommit --setup --for laravel
+  git-cli precommit --setup --scan
+  git-cli precommit run
+  git-cli precommit status
+  git-cli precommit list
+
+The managed hook runs secret scanning first, then application-specific checks.`)
+}
+
+func (a *App) precommitStatus() int {
+	root, err := gitutil.Root()
+	if err != nil {
+		fmt.Fprintln(a.Err, err)
+		return 2
+	}
+	cfg, cfgErr := precommit.Load(root)
+	gitDir, _ := gitutil.GitDir(root)
+	hook := filepath.Join(gitDir, "hooks", "pre-commit")
+	managed := false
+	if b, e := os.ReadFile(hook); e == nil {
+		managed = precommit.ManagedHook(string(b))
+	}
+	fmt.Fprintf(a.Out, "Repository: %s\nManaged hook: %v\n", root, managed)
+	if cfgErr != nil {
+		fmt.Fprintf(a.Out, "Preset: not configured (%s)\n", precommit.ConfigFilename)
+		return 0
+	}
+	fmt.Fprintf(a.Out, "Preset: %s\nConfig: %s\n", cfg.Preset, filepath.Join(root, precommit.ConfigFilename))
+	return 0
 }
 
 func (a *App) securityCommand(args []string) int {
