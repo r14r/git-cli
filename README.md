@@ -1,6 +1,11 @@
 # git-cli
 
-`git-cli` is a standalone Go CLI for Git workflow utilities. The initial command group is `security`, which protects repositories from committing secrets.
+`git-cli` is a standalone Go CLI for Git workflow utilities. It currently provides two command groups:
+
+- `security` — secret scanning and commit protection.
+- `precommit` — application-aware pre-commit setup and staged-code validation.
+
+Current version: **0.3.0**
 
 ## Security scanners
 
@@ -8,9 +13,7 @@
 - **detect-secrets** — required/default; staged and repository scans.
 - **TruffleHog** — optional; deep/history scans.
 
-`git-cli security` orchestrates these external scanners; it does not copy their detection engines.
-
-## Install scanner dependencies on macOS
+Install scanner dependencies on macOS:
 
 ```bash
 brew install gitleaks detect-secrets trufflehog
@@ -26,49 +29,75 @@ sudo just install
 
 Default binary installation path: `/usr/local/bin/git-cli`.
 
+## Application-aware pre-commit setup
 
-## Update with update-cli
-
-This repository includes `update-cli.yaml` for the Go build/install workflow. The update source itself is configured in `.updater-cli/config.json` as the Git repository:
-
-```text
-https://github.com/r14r/git-cli.git
-```
-
-Equivalent initialization command:
+Explicitly select a preset:
 
 ```bash
-update-cli init git-cli --from repository --repository https://github.com/r14r/git-cli.git
+git-cli precommit --setup --for python
+git-cli precommit --setup --for fastapi
+git-cli precommit --setup --for django
+git-cli precommit --setup --for laravel
 ```
 
-The normal update check is then:
+`laracel` is accepted as an alias for `laravel`.
+
+Or detect the application in the current Git repository:
 
 ```bash
-update-cli check
+git-cli precommit --setup --scan
 ```
 
-## Repository setup
+Detection rules currently recognize:
 
-From a Git repository:
+- Laravel: `artisan` plus `laravel/framework` in `composer.json`
+- Django: `manage.py`
+- FastAPI: `fastapi` in common Python dependency files
+- Python: common Python project/dependency files
 
-```bash
-git-cli security install
+The setup creates `.git-cli-precommit.yaml` and installs a managed `.git/hooks/pre-commit` hook.
+
+Example configuration:
+
+```yaml
+preset: fastapi
 ```
 
-This installs `.git/hooks/pre-commit` containing:
+The generated hook executes:
 
 ```bash
 #!/usr/bin/env bash
 set -e
 
-exec git-cli security check-staged
+# managed by git-cli precommit
+git-cli security "check-staged"
+exec git-cli precommit run
 ```
 
-It also creates `.git-cli.yaml` if missing. Existing unrelated pre-commit hooks are never overwritten.
+This means every commit performs secret scanning first and application checks second.
 
-## Commands
+### Preset checks
 
-```text
+| Preset | Checks |
+|---|---|
+| `python` | `ruff check` on staged `.py` files; falls back to `python -m py_compile` |
+| `fastapi` | same staged Python checks |
+| `django` | staged Python checks plus `python manage.py check` |
+| `laravel` | `php -l` for staged `.php` files |
+
+Additional precommit commands:
+
+```bash
+git-cli precommit run
+git-cli precommit status
+git-cli precommit list
+```
+
+Existing unrelated pre-commit hooks are not overwritten. A previous git-cli security-only hook can be upgraded to the combined application-aware hook.
+
+## Security commands
+
+```bash
 git-cli security install
 
 git-cli security check-staged
@@ -82,29 +111,18 @@ git-cli security scanner status
 
 Additional management commands:
 
-```text
+```bash
 git-cli security status
 git-cli security uninstall
 git-cli version
 git-cli help
 git-cli security help
+git-cli precommit help
 ```
 
-Use `--json` with scan commands for machine-readable output.
+Use `--json` with security scan commands for machine-readable output.
 
-## Scanner commands
-
-`git-cli security scanner list` lists the scanners supported by this release and the scan modes each scanner supports.
-
-`git-cli security scanner status` reports whether each scanner is enabled, required and installed. Inside a Git repository it uses `.git-cli.yaml`; outside a repository it displays the default configuration.
-
-## Exit codes
-
-- `0`: scan passed or informational command succeeded
-- `1`: secret finding(s), commit should be blocked
-- `2`: configuration/scanner/runtime/usage error
-
-## Configuration
+## Security configuration
 
 `.git-cli.yaml`:
 
@@ -124,18 +142,30 @@ detect_secrets_baseline: .secrets.baseline
 # gitleaks_config: .gitleaks.toml
 ```
 
-## detect-secrets baseline
-
-Optional:
+Optional detect-secrets baseline:
 
 ```bash
 detect-secrets scan > .secrets.baseline
 ```
 
-When that file exists, staged scans pass it to `detect-secrets-hook`.
+## Update with update-cli
 
-## Security model
+This repository includes `update-cli.yaml` for the Go build/install workflow. The update source itself is configured in `.updater-cli/config.json` as:
 
-The pre-commit hook calls `git-cli security check-staged`. Gitleaks scans staged Git changes and detect-secrets scans the staged file paths. TruffleHog is reserved for deep/history scans so normal commits remain fast.
+```text
+https://github.com/r14r/git-cli.git
+```
 
-Git hooks can be bypassed with `git commit --no-verify`, so CI or pre-push scanning should be added as a second enforcement layer when stronger enforcement is required.
+Equivalent initialization:
+
+```bash
+update-cli init git-cli --from repository --repository https://github.com/r14r/git-cli.git
+```
+
+## Exit codes
+
+- `0`: command/check passed
+- `1`: secret finding or application precommit check failed
+- `2`: configuration/scanner/runtime/usage error
+
+Git hooks can be bypassed with `git commit --no-verify`; CI or pre-push scanning should be used as a second enforcement layer where stronger enforcement is required.
