@@ -2,7 +2,7 @@
 
 `git-cli` is a standalone Go CLI for Git workflow utilities.
 
-Current version: **0.4.0**
+Current version: **0.4.1**
 
 ## Command groups
 
