@@ -6,6 +6,7 @@ import (
 
 	"git-cli/internal/app"
 	"git-cli/internal/doctor"
+	"git-cli/internal/gitignorecmd"
 	"git-cli/internal/precommitcmd"
 	"git-cli/internal/projectcmd"
 )
@@ -21,6 +22,7 @@ func main() {
 Usage:
   git-cli security <command>       Secret scanning and commit protection
   git-cli precommit <options>      Configure/run application pre-commit checks
+  git-cli gitignore <command>      Create/manage .gitignore from GitHub templates
   git-cli project detect           Detect the current application type
   git-cli project info             Show current project information
   git-cli doctor                   Diagnose repository/tooling setup
@@ -31,6 +33,8 @@ Usage:
 	switch args[0] {
 	case "precommit":
 		os.Exit(precommitcmd.Run(args[1:], os.Stdout, os.Stderr))
+	case "gitignore":
+		os.Exit(gitignorecmd.Run(args[1:], os.Stdout, os.Stderr))
 	case "project":
 		os.Exit(projectcmd.Run(args[1:], os.Stdout, os.Stderr))
 	case "doctor":
