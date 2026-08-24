@@ -2,12 +2,13 @@
 
 `git-cli` is a standalone Go CLI for Git workflow utilities.
 
-Current version: **0.4.1**
+Current version: **0.5.0**
 
 ## Command groups
 
 - `security` — secret scanning and commit protection.
 - `precommit` — application-aware pre-commit setup and staged-code validation.
+- `gitignore` — create and maintain `.gitignore` files from GitHub templates.
 - `project` — detect and inspect the current application type.
 - `doctor` — diagnose Git hooks, scanners and application tooling.
 
@@ -20,6 +21,79 @@ sudo just install
 ```
 
 Default binary installation path: `/usr/local/bin/git-cli`.
+
+## Gitignore management
+
+`git-cli` can create or extend `.gitignore` without overwriting hand-written rules. Managed template content is stored in marked sections and can be refreshed or removed independently.
+
+### Add a project preset
+
+```bash
+git-cli gitignore add --for python
+git-cli gitignore add --for fastapi
+git-cli gitignore add --for django
+git-cli gitignore add --for laravel
+git-cli gitignore add --for go
+git-cli gitignore add --for node
+```
+
+Django, FastAPI and Python use GitHub's maintained `Python.gitignore`; the Python template already contains Django-specific ignore rules. Laravel adds a curated framework block because the GitHub template repository currently has no dedicated Laravel template.
+
+Automatically detect the current project and apply the matching preset:
+
+```bash
+git-cli gitignore add --scan
+```
+
+### Browse and use GitHub templates
+
+The template catalog is loaded from the public `github/gitignore` repository.
+
+```bash
+git-cli gitignore list
+git-cli gitignore list --filter python
+git-cli gitignore list --filter jetbrains
+```
+
+Add any template by its catalog name or path:
+
+```bash
+git-cli gitignore add --template Python
+git-cli gitignore add --template Global/macOS
+git-cli gitignore add --template Global/JetBrains
+```
+
+Preview before changing `.gitignore`:
+
+```bash
+git-cli gitignore show --for django
+git-cli gitignore show --template Python
+```
+
+Download an official template without modifying the repository:
+
+```bash
+git-cli gitignore download --template Python
+git-cli gitignore download --template Global/macOS --output macOS.gitignore
+```
+
+Inspect or remove git-cli-managed sections:
+
+```bash
+git-cli gitignore status
+git-cli gitignore remove --for django
+git-cli gitignore presets
+```
+
+A managed section looks like:
+
+```text
+# >>> git-cli gitignore: django
+...
+# <<< git-cli gitignore: django
+```
+
+Running the same `add` command again refreshes that section from the current upstream template while leaving all other `.gitignore` content untouched.
 
 ## Security
 
