@@ -219,7 +219,7 @@ func pythonCommand() string {
 }
 
 func commandExists(name string) bool { _, err := exec.LookPath(name); return err == nil }
-func fileExists(path string) bool     { _, err := os.Stat(path); return err == nil }
+func fileExists(path string) bool    { _, err := os.Stat(path); return err == nil }
 func fileContains(path, needle string) bool {
 	b, err := os.ReadFile(path)
 	return err == nil && strings.Contains(strings.ToLower(string(b)), strings.ToLower(needle))
