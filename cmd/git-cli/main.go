@@ -5,10 +5,15 @@ import (
 	"os"
 
 	"git-cli/internal/app"
+	"git-cli/internal/branchcmd"
+	"git-cli/internal/cleancmd"
 	"git-cli/internal/doctor"
 	"git-cli/internal/gitignorecmd"
+	"git-cli/internal/gitignorediag"
+	"git-cli/internal/largefilescmd"
 	"git-cli/internal/precommitcmd"
 	"git-cli/internal/projectcmd"
+	"git-cli/internal/repocmd"
 )
 
 var version = "dev"
@@ -25,6 +30,10 @@ Usage:
   git-cli gitignore <command>      Create/manage .gitignore from GitHub templates
   git-cli project detect           Detect the current application type
   git-cli project info             Show current project information
+  git-cli repo health              Inspect repository health
+  git-cli clean <command>          Safely preview/remove generated files
+  git-cli large-files scan         Find large tracked files
+  git-cli branch <command>         Inspect merged/stale branches
   git-cli doctor                   Diagnose repository/tooling setup
   git-cli version                  Show version
 `)
@@ -34,9 +43,20 @@ Usage:
 	case "precommit":
 		os.Exit(precommitcmd.Run(args[1:], os.Stdout, os.Stderr))
 	case "gitignore":
+		if len(args) > 1 && (args[1] == "explain" || args[1] == "tracked") {
+			os.Exit(gitignorediag.Run(args[1:], os.Stdout, os.Stderr))
+		}
 		os.Exit(gitignorecmd.Run(args[1:], os.Stdout, os.Stderr))
 	case "project":
 		os.Exit(projectcmd.Run(args[1:], os.Stdout, os.Stderr))
+	case "repo":
+		os.Exit(repocmd.Run(args[1:], os.Stdout, os.Stderr))
+	case "clean":
+		os.Exit(cleancmd.Run(args[1:], os.Stdout, os.Stderr))
+	case "large-files":
+		os.Exit(largefilescmd.Run(args[1:], os.Stdout, os.Stderr))
+	case "branch":
+		os.Exit(branchcmd.Run(args[1:], os.Stdout, os.Stderr))
 	case "doctor":
 		os.Exit(doctor.Run(os.Stdout, os.Stderr))
 	case "hook":
