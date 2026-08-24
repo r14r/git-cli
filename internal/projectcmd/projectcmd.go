@@ -19,7 +19,10 @@ Usage:
 		return 0
 	}
 	root, err := gitutil.Root()
-	if err != nil { fmt.Fprintln(errOut, err); return 2 }
+	if err != nil {
+		fmt.Fprintln(errOut, err)
+		return 2
+	}
 	preset, detectErr := precommit.Detect(root)
 	jsonOut := len(args) > 1 && args[1] == "--json"
 	switch args[0] {
