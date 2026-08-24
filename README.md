@@ -2,14 +2,18 @@
 
 `git-cli` is a standalone Go CLI for Git workflow utilities.
 
-Current version: **0.5.0**
+Current version: **0.6.0**
 
 ## Command groups
 
 - `security` — secret scanning and commit protection.
 - `precommit` — application-aware pre-commit setup and staged-code validation.
-- `gitignore` — create and maintain `.gitignore` files from GitHub templates.
+- `gitignore` — create, maintain and diagnose `.gitignore` rules.
 - `project` — detect and inspect the current application type.
+- `repo` — repository health diagnostics.
+- `clean` — safe Git cleanup previews and explicit ignored-file cleanup.
+- `large-files` — detect oversized tracked files.
+- `branch` — inspect merged and stale local branches.
 - `doctor` — diagnose Git hooks, scanners and application tooling.
 
 ## Build and install
@@ -21,6 +25,80 @@ sudo just install
 ```
 
 Default binary installation path: `/usr/local/bin/git-cli`.
+
+## Repository intelligence
+
+### Repository health
+
+```bash
+git-cli repo health
+```
+
+The health report checks the current branch, working-tree state, upstream configuration, ahead/behind counts, `.gitignore`, and tracked files that now match ignore rules. Exit code `1` means actionable repository issues were found; exit code `2` means the command itself could not run.
+
+### Explain ignore rules
+
+```bash
+git-cli gitignore explain .env
+git-cli gitignore explain .env dist/output.json
+```
+
+This wraps `git check-ignore -v --no-index`, so the output shows the matching ignore source, line and pattern. Tracked files can also be inspected.
+
+Find files which are already tracked even though current ignore rules match them:
+
+```bash
+git-cli gitignore tracked
+```
+
+The command is read-only. It suggests `git rm --cached <path>` but never modifies the index automatically.
+
+### Safe cleanup
+
+Preview untracked files that Git could clean:
+
+```bash
+git-cli clean preview
+```
+
+Preview only ignored files:
+
+```bash
+git-cli clean ignored --preview
+```
+
+Explicitly remove ignored files/directories:
+
+```bash
+git-cli clean ignored --apply
+```
+
+The destructive path requires the explicit `--apply` option. It maps to Git's ignored-only clean mode (`git clean -fdX`).
+
+### Large tracked files
+
+```bash
+git-cli large-files scan
+git-cli large-files scan --threshold-mb 50
+```
+
+The default threshold is 25 MB. The scanner reads Git index blob sizes and reports large tracked files without modifying the repository.
+
+### Branch inspection
+
+List local branches already merged into the current `HEAD`, excluding the current branch and conventional `main`/`master` branches:
+
+```bash
+git-cli branch merged
+```
+
+List local branches ordered by commit date:
+
+```bash
+git-cli branch stale
+```
+
+These commands are read-only. Branch deletion is intentionally not automatic in v0.6.0.
 
 ## Gitignore management
 
@@ -37,8 +115,6 @@ git-cli gitignore add --for go
 git-cli gitignore add --for node
 ```
 
-Django, FastAPI and Python use GitHub's maintained `Python.gitignore`; the Python template already contains Django-specific ignore rules. Laravel adds a curated framework block because the GitHub template repository currently has no dedicated Laravel template.
-
 Automatically detect the current project and apply the matching preset:
 
 ```bash
@@ -53,33 +129,17 @@ The template catalog is loaded from the public `github/gitignore` repository.
 git-cli gitignore list
 git-cli gitignore list --filter python
 git-cli gitignore list --filter jetbrains
-```
 
-Add any template by its catalog name or path:
-
-```bash
 git-cli gitignore add --template Python
 git-cli gitignore add --template Global/macOS
 git-cli gitignore add --template Global/JetBrains
-```
 
-Preview before changing `.gitignore`:
-
-```bash
 git-cli gitignore show --for django
 git-cli gitignore show --template Python
-```
 
-Download an official template without modifying the repository:
-
-```bash
 git-cli gitignore download --template Python
 git-cli gitignore download --template Global/macOS --output macOS.gitignore
-```
 
-Inspect or remove git-cli-managed sections:
-
-```bash
 git-cli gitignore status
 git-cli gitignore remove --for django
 git-cli gitignore presets
@@ -93,7 +153,7 @@ A managed section looks like:
 # <<< git-cli gitignore: django
 ```
 
-Running the same `add` command again refreshes that section from the current upstream template while leaving all other `.gitignore` content untouched.
+Running the same `add` command again refreshes that section while leaving other `.gitignore` content untouched.
 
 ## Security
 
@@ -136,8 +196,6 @@ git-cli precommit --setup --for django
 git-cli precommit --setup --for laravel
 ```
 
-`laracel` is accepted as a compatibility alias for `laravel`.
-
 Automatic detection:
 
 ```bash
@@ -153,20 +211,9 @@ git-cli precommit list
 git-cli precommit uninstall
 ```
 
-The selected preset is stored in `.git-cli-precommit.yaml`.
+The selected preset is stored in `.git-cli-precommit.yaml`. Staged Python/PHP checks operate on materialized Git-index content rather than later unstaged worktree edits.
 
-### Project detection
-
-Current detection rules:
-
-| Preset | Detection |
-|---|---|
-| `laravel` | `artisan` plus `laravel/framework` in `composer.json` |
-| `django` | `manage.py` |
-| `fastapi` | `fastapi` in common Python dependency files |
-| `python` | common Python project/dependency files |
-
-Inspect detection without changing the repository:
+## Project detection
 
 ```bash
 git-cli project detect
@@ -175,87 +222,21 @@ git-cli project info
 git-cli project info --json
 ```
 
-### Preset checks
-
-| Preset | Checks |
-|---|---|
-| `python` | `ruff check` on staged `.py` content; fallback to `python -m py_compile` |
-| `fastapi` | same staged Python checks |
-| `django` | staged Python checks plus `python manage.py check` |
-| `laravel` | `php -l` against staged `.php` content |
-
-The validator materializes files from the Git index using `git show :<path>`. Therefore checks operate on the exact content being committed, not on later unstaged worktree edits.
+Current pre-commit project types include Python, FastAPI, Django and Laravel.
 
 ## Hook handling
 
-`git-cli precommit --setup ...` respects Git's configured hook directory:
-
-```bash
-git config core.hooksPath .githooks
-```
-
-If `core.hooksPath` is unset, `.git/hooks` is used.
-
-The managed hook is intentionally stable:
-
-```bash
-#!/usr/bin/env bash
-set -e
-
-# managed by git-cli precommit
-exec git-cli hook run pre-commit
-```
-
-`git-cli hook run pre-commit` runs security checks first and application checks second.
-
-Existing unrelated hooks are never overwritten. `git-cli precommit uninstall` removes the application-specific configuration and downgrades the hook to security-only scanning.
+`git-cli precommit --setup ...` respects `core.hooksPath`. If unset, `.git/hooks` is used. The managed pre-commit hook dispatches to security scanning first and application validation second.
 
 ## Doctor
-
-Run:
 
 ```bash
 git-cli doctor
 ```
 
-It checks:
+`doctor` diagnoses environment/configuration correctness: repository access, hooks, secret scanners, security config, detected application preset and required runtimes.
 
-- whether the current directory belongs to a Git repository
-- effective Git hook path, including `core.hooksPath`
-- git-cli pre-commit hook state
-- Gitleaks, detect-secrets and optional TruffleHog availability
-- `.git-cli.yaml`
-- detected application preset
-- required runtime such as Python or PHP
-- `.git-cli-precommit.yaml`
-
-A non-zero exit code indicates a required dependency or configuration problem.
-
-## Security configuration
-
-Example `.git-cli.yaml`:
-
-```yaml
-fail_on: high
-scanners:
-  gitleaks:
-    enabled: true
-    required: true
-  detect-secrets:
-    enabled: true
-    required: true
-  trufflehog:
-    enabled: true
-    required: false
-detect_secrets_baseline: .secrets.baseline
-# gitleaks_config: .gitleaks.toml
-```
-
-Optional detect-secrets baseline:
-
-```bash
-detect-secrets scan > .secrets.baseline
-```
+`repo health` is complementary: it reports the quality/state of the repository itself.
 
 ## Update with update-cli
 
@@ -273,8 +254,8 @@ update-cli init git-cli --from repository --repository https://github.com/r14r/g
 
 ## Exit codes
 
-- `0`: command/check passed
-- `1`: finding, application validation failure or doctor problem
-- `2`: configuration/runtime/usage error
+- `0`: command/check passed or no finding.
+- `1`: finding or actionable repository issue.
+- `2`: configuration, runtime or usage error.
 
 Git hooks can be bypassed with `git commit --no-verify`; CI or pre-push enforcement remains appropriate when stronger policy enforcement is required.
