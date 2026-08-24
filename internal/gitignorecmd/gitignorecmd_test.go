@@ -37,9 +37,9 @@ func TestRemoveBlock(t *testing.T) {
 
 func TestNormalizeTemplatePath(t *testing.T) {
 	cases := map[string]string{
-		"Python":       "Python.gitignore",
+		"Python":           "Python.gitignore",
 		"Python.gitignore": "Python.gitignore",
-		"Global/macOS": "Global/macOS.gitignore",
+		"Global/macOS":     "Global/macOS.gitignore",
 	}
 	for in, want := range cases {
 		if got := normalizeTemplatePath(in); got != want {
