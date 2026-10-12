@@ -2,7 +2,7 @@
 
 `git-cli` is a standalone Go CLI for Git workflow utilities.
 
-Current version: **0.7.2**
+Current version: **0.7.3**
 
 ## Command groups
 
@@ -294,9 +294,10 @@ git-cli pat list
 git-cli pat delete release
 git-cli pat delete --name release
 git-cli pat status
+git-cli pat secure
 ```
 
-The directory is created with mode `0700` and `pat.yaml` with mode `0600`. PAT values are stored as plaintext YAML and therefore rely on filesystem permissions for protection. The file is never written into the repository.
+The directory is created with mode `0700`. `pat.yaml` and the separate encryption key `pat.key` use mode `0600`. PAT values are encrypted with AES-256-GCM and stored as `enc:v1:...` ciphertext in `pat.yaml`. Run `git-cli pat secure` once to migrate plaintext entries created by v0.7.2. The files are never written into the repository.
 
 ## Update with update-cli
 
