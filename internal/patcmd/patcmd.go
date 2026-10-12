@@ -2,6 +2,10 @@ package patcmd
 
 import (
 	"bufio"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"encoding/base64"
 	"errors"
 	"flag"
 	"fmt"
@@ -13,7 +17,11 @@ import (
 	"strings"
 )
 
-const configDirEnv = "GIT_CLI_CONFIG_DIR"
+const (
+	configDirEnv = "GIT_CLI_CONFIG_DIR"
+	encPrefix    = "enc:v1:"
+	keyPrefix    = "v1:"
+)
 
 type store struct {
 	PATs map[string]string
@@ -36,6 +44,8 @@ func Run(args []string, out, errOut io.Writer) int {
 		return deletePAT(args[1:], out, errOut)
 	case "status":
 		return status(out, errOut)
+	case "secure":
+		return secure(out, errOut)
 	default:
 		fmt.Fprintf(errOut, "unknown pat command: %s\n", args[0])
 		help(errOut)
@@ -55,15 +65,21 @@ Usage:
   git-cli pat delete <NAME>
   git-cli pat delete --name <NAME>
   git-cli pat status
+  git-cli pat secure
 
-PAT values are stored in pat.yaml below the installation prefix:
+PAT values are encrypted with AES-256-GCM in:
   <prefix>/etc/git-config/pat.yaml
 
-For /usr/local/bin/git-cli this is:
-  /usr/local/etc/git-config/pat.yaml
+The encryption key is stored separately in:
+  <prefix>/etc/git-config/pat.key
 
+For /usr/local/bin/git-cli:
+  /usr/local/etc/git-config/pat.yaml
+  /usr/local/etc/git-config/pat.key
+
+Both files use mode 0600 and the directory mode 0700.
 Set GIT_CLI_CONFIG_DIR to override the config directory.
-The directory is created with mode 0700 and pat.yaml with mode 0600.
+Use pat secure once to migrate plaintext v0.7.2 entries.
 Using --token-stdin avoids putting a token in shell history or process arguments.`)
 }
 
@@ -106,16 +122,27 @@ func create(args []string, out, errOut io.Writer) int {
 		fmt.Fprintln(errOut, err)
 		return 2
 	}
+	key, err := loadOrCreateKey()
+	if err != nil {
+		fmt.Fprintln(errOut, err)
+		return 2
+	}
+	encrypted, err := encryptToken(key, value)
+	if err != nil {
+		fmt.Fprintln(errOut, err)
+		return 2
+	}
+
 	if s.PATs == nil {
 		s.PATs = map[string]string{}
 	}
-	s.PATs[n] = value
+	s.PATs[n] = encrypted
 	if err := saveStore(path, s); err != nil {
 		fmt.Fprintln(errOut, err)
 		return 2
 	}
 
-	fmt.Fprintf(out, "Stored PAT %q in %s.\n", n, path)
+	fmt.Fprintf(out, "Stored encrypted PAT %q in %s.\n", n, path)
 	return 0
 }
 
@@ -134,7 +161,22 @@ func display(args []string, out, errOut io.Writer) int {
 		fmt.Fprintf(errOut, "PAT %q not found\n", n)
 		return 2
 	}
-	fmt.Fprintln(out, value)
+
+	if !strings.HasPrefix(value, encPrefix) {
+		fmt.Fprintf(errOut, "PAT %q is stored in plaintext; run 'git-cli pat secure' first\n", n)
+		return 2
+	}
+	key, err := loadKey()
+	if err != nil {
+		fmt.Fprintln(errOut, err)
+		return 2
+	}
+	plain, err := decryptToken(key, value)
+	if err != nil {
+		fmt.Fprintln(errOut, err)
+		return 2
+	}
+	fmt.Fprintln(out, plain)
 	return 0
 }
 
@@ -182,13 +224,57 @@ func deletePAT(args []string, out, errOut io.Writer) int {
 	return 0
 }
 
+func secure(out, errOut io.Writer) int {
+	s, path, err := loadStore()
+	if err != nil {
+		fmt.Fprintln(errOut, err)
+		return 2
+	}
+	key, err := loadOrCreateKey()
+	if err != nil {
+		fmt.Fprintln(errOut, err)
+		return 2
+	}
+
+	changed := 0
+	for name, value := range s.PATs {
+		if strings.HasPrefix(value, encPrefix) {
+			continue
+		}
+		encrypted, err := encryptToken(key, value)
+		if err != nil {
+			fmt.Fprintf(errOut, "encrypt PAT %q: %v\n", name, err)
+			return 2
+		}
+		s.PATs[name] = encrypted
+		changed++
+	}
+	if changed == 0 {
+		fmt.Fprintln(out, "All PATs are already encrypted.")
+		return 0
+	}
+	if err := saveStore(path, s); err != nil {
+		fmt.Fprintln(errOut, err)
+		return 2
+	}
+	fmt.Fprintf(out, "Encrypted %d PAT(s) in %s.\n", changed, path)
+	return 0
+}
+
 func status(out, errOut io.Writer) int {
 	path, err := configPath()
 	if err != nil {
 		fmt.Fprintln(errOut, err)
 		return 2
 	}
+	keyPath, err := keyPath()
+	if err != nil {
+		fmt.Fprintln(errOut, err)
+		return 2
+	}
 	fmt.Fprintf(out, "PAT file: %s\n", path)
+	fmt.Fprintf(out, "Key file: %s\n", keyPath)
+
 	info, err := os.Stat(path)
 	if errors.Is(err, os.ErrNotExist) {
 		fmt.Fprintln(out, "Status: not created")
@@ -198,15 +284,41 @@ func status(out, errOut io.Writer) int {
 		fmt.Fprintln(errOut, err)
 		return 2
 	}
-	fmt.Fprintf(out, "Mode: %04o\n", info.Mode().Perm())
+	fmt.Fprintf(out, "PAT mode: %04o\n", info.Mode().Perm())
+
+	keyInfo, keyErr := os.Stat(keyPath)
+	if keyErr == nil {
+		fmt.Fprintf(out, "Key mode: %04o\n", keyInfo.Mode().Perm())
+	} else if !errors.Is(keyErr, os.ErrNotExist) {
+		fmt.Fprintln(errOut, keyErr)
+		return 2
+	}
+
 	s, _, err := loadStore()
 	if err != nil {
 		fmt.Fprintln(errOut, err)
 		return 2
 	}
+	plain := 0
+	for _, value := range s.PATs {
+		if !strings.HasPrefix(value, encPrefix) {
+			plain++
+		}
+	}
 	fmt.Fprintf(out, "PATs: %d\n", len(s.PATs))
-	if info.Mode().Perm()&0o077 != 0 {
-		fmt.Fprintln(out, "Warning: PAT file is readable or writable by group/others")
+	fmt.Fprintf(out, "Encrypted: %d\n", len(s.PATs)-plain)
+	fmt.Fprintf(out, "Plaintext: %d\n", plain)
+
+	insecure := info.Mode().Perm()&0o077 != 0
+	if keyErr == nil {
+		insecure = insecure || keyInfo.Mode().Perm()&0o077 != 0
+	}
+	if plain > 0 {
+		fmt.Fprintln(out, "Warning: plaintext PATs found; run 'git-cli pat secure'")
+		return 1
+	}
+	if insecure {
+		fmt.Fprintln(out, "Warning: PAT or key file is readable or writable by group/others")
 		return 1
 	}
 	return 0
@@ -249,14 +361,32 @@ func normalizeName(name string) (string, error) {
 }
 
 func configPath() (string, error) {
+	dir, err := configDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "pat.yaml"), nil
+}
+
+func keyPath() (string, error) {
+	dir, err := configDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "pat.key"), nil
+}
+
+func configDir() (string, error) {
 	if dir := strings.TrimSpace(os.Getenv(configDirEnv)); dir != "" {
-		return filepath.Join(dir, "pat.yaml"), nil
+		return dir, nil
 	}
 	exe, err := os.Executable()
 	if err != nil {
 		return "", fmt.Errorf("resolve git-cli executable: %w", err)
 	}
-	return configPathForExecutable(exe), nil
+	binDir := filepath.Dir(filepath.Clean(exe))
+	prefix := filepath.Dir(binDir)
+	return filepath.Join(prefix, "etc", "git-config"), nil
 }
 
 func configPathForExecutable(exe string) string {
@@ -318,11 +448,8 @@ func loadStore() (store, string, error) {
 
 func saveStore(path string, s store) error {
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return fmt.Errorf("create PAT config directory %s: %w", dir, err)
-	}
-	if err := os.Chmod(dir, 0o700); err != nil {
-		return fmt.Errorf("secure PAT config directory %s: %w", dir, err)
+	if err := ensureSecureDir(dir); err != nil {
+		return err
 	}
 
 	names := make([]string, 0, len(s.PATs))
@@ -332,25 +459,41 @@ func saveStore(path string, s store) error {
 	sort.Strings(names)
 
 	var b strings.Builder
-	b.WriteString("# git-cli PAT storage\n")
-	b.WriteString("# Keep this file private.\n")
+	b.WriteString("# git-cli encrypted PAT storage\n")
+	b.WriteString("# Values use AES-256-GCM. Keep pat.key private.\n")
 	b.WriteString("pats:\n")
 	for _, name := range names {
 		fmt.Fprintf(&b, "  %s: %s\n", strconv.Quote(name), strconv.Quote(s.PATs[name]))
 	}
+	return writePrivateFile(path, []byte(b.String()))
+}
 
-	tmp, err := os.CreateTemp(dir, ".pat.yaml-*")
+func ensureSecureDir(dir string) error {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return fmt.Errorf("create PAT config directory %s: %w", dir, err)
+	}
+	if err := os.Chmod(dir, 0o700); err != nil {
+		return fmt.Errorf("secure PAT config directory %s: %w", dir, err)
+	}
+	return nil
+}
+
+func writePrivateFile(path string, content []byte) error {
+	dir := filepath.Dir(path)
+	if err := ensureSecureDir(dir); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+"-*")
 	if err != nil {
-		return fmt.Errorf("create temporary PAT file: %w", err)
+		return err
 	}
 	tmpPath := tmp.Name()
 	defer os.Remove(tmpPath)
-
 	if err := tmp.Chmod(0o600); err != nil {
 		tmp.Close()
 		return err
 	}
-	if _, err := io.WriteString(tmp, b.String()); err != nil {
+	if _, err := tmp.Write(content); err != nil {
 		tmp.Close()
 		return err
 	}
@@ -358,10 +501,99 @@ func saveStore(path string, s store) error {
 		return err
 	}
 	if err := os.Rename(tmpPath, path); err != nil {
-		return fmt.Errorf("install PAT file %s: %w", path, err)
+		return err
 	}
-	if err := os.Chmod(path, 0o600); err != nil {
-		return fmt.Errorf("secure PAT file %s: %w", path, err)
+	return os.Chmod(path, 0o600)
+}
+
+func loadOrCreateKey() ([]byte, error) {
+	path, err := keyPath()
+	if err != nil {
+		return nil, err
 	}
-	return nil
+	key, err := loadKey()
+	if err == nil {
+		return key, nil
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+
+	key = make([]byte, 32)
+	if _, err := io.ReadFull(rand.Reader, key); err != nil {
+		return nil, fmt.Errorf("generate encryption key: %w", err)
+	}
+	content := []byte(keyPrefix + base64.StdEncoding.EncodeToString(key) + "\n")
+	if err := writePrivateFile(path, content); err != nil {
+		return nil, fmt.Errorf("write encryption key: %w", err)
+	}
+	return key, nil
+}
+
+func loadKey() ([]byte, error) {
+	path, err := keyPath()
+	if err != nil {
+		return nil, err
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	value := strings.TrimSpace(string(b))
+	if !strings.HasPrefix(value, keyPrefix) {
+		return nil, errors.New("unsupported PAT key format")
+	}
+	key, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(value, keyPrefix))
+	if err != nil {
+		return nil, fmt.Errorf("decode PAT key: %w", err)
+	}
+	if len(key) != 32 {
+		return nil, fmt.Errorf("invalid PAT key length: %d", len(key))
+	}
+	return key, nil
+}
+
+func encryptToken(key []byte, token string) (string, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return "", err
+	}
+	sealed := gcm.Seal(nil, nonce, []byte(token), nil)
+	payload := append(nonce, sealed...)
+	return encPrefix + base64.StdEncoding.EncodeToString(payload), nil
+}
+
+func decryptToken(key []byte, value string) (string, error) {
+	if !strings.HasPrefix(value, encPrefix) {
+		return "", errors.New("PAT value is not encrypted")
+	}
+	payload, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(value, encPrefix))
+	if err != nil {
+		return "", fmt.Errorf("decode encrypted PAT: %w", err)
+	}
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	if len(payload) < gcm.NonceSize() {
+		return "", errors.New("encrypted PAT payload is too short")
+	}
+	nonce, ciphertext := payload[:gcm.NonceSize()], payload[gcm.NonceSize():]
+	plain, err := gcm.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return "", errors.New("decrypt PAT: authentication failed")
+	}
+	return string(plain), nil
 }
