@@ -11,6 +11,7 @@ import (
 	"git-cli/internal/gitignorecmd"
 	"git-cli/internal/gitignorediag"
 	"git-cli/internal/largefilescmd"
+	"git-cli/internal/patcmd"
 	"git-cli/internal/precommitcmd"
 	"git-cli/internal/projectcmd"
 	"git-cli/internal/repocmd"
@@ -34,6 +35,7 @@ Usage:
   git-cli clean <command>          Safely preview/remove generated files
   git-cli large-files scan         Find large tracked files
   git-cli branch <command>         Inspect merged/stale branches
+  git-cli pat <command>            Store/manage Git PATs via credential helper
   git-cli doctor                   Diagnose repository/tooling setup
   git-cli version                  Show version
 `)
@@ -57,6 +59,8 @@ Usage:
 		os.Exit(largefilescmd.Run(args[1:], os.Stdout, os.Stderr))
 	case "branch":
 		os.Exit(branchcmd.Run(args[1:], os.Stdout, os.Stderr))
+	case "pat":
+		os.Exit(patcmd.Run(args[1:], os.Stdout, os.Stderr))
 	case "doctor":
 		os.Exit(doctor.Run(os.Stdout, os.Stderr))
 	case "hook":
