@@ -50,7 +50,7 @@ func Run(args []string, out, errOut io.Writer) int {
 }
 
 func help(w io.Writer) {
-	fmt.Fprint(w, `git-cli pat - local Git PAT management
+	io.WriteString(w, `git-cli pat - local Git PAT management
 
 Usage:
   git-cli pat create --name <NAME> --token <TOKEN>
