@@ -2,7 +2,7 @@
 
 `git-cli` is a standalone Go CLI for Git workflow utilities.
 
-Current version: **0.7.1**
+Current version: **0.7.2**
 
 ## Command groups
 
@@ -241,7 +241,32 @@ git-cli doctor
 
 ## PAT management
 
-Named GitHub personal access tokens can be stored through Git's configured credential helper. On macOS this commonly means Keychain; other platforms can use Git Credential Manager or another configured helper. Token values are not stored in the repository and are not written to git-cli metadata.
+Named GitHub personal access tokens are stored in a deployment-local YAML file.
+
+For an installation at:
+
+```text
+/usr/local/bin/git-cli
+```
+
+the configuration path is:
+
+```text
+/usr/local/etc/git-config/pat.yaml
+```
+
+The path is derived from the executable installation prefix as:
+
+```text
+<prefix>/bin/git-cli
+<prefix>/etc/git-config/pat.yaml
+```
+
+Override the directory when needed:
+
+```bash
+export GIT_CLI_CONFIG_DIR=/custom/config
+```
 
 Store a PAT:
 
@@ -255,21 +280,23 @@ Safer input that avoids placing the token in shell history or process arguments:
 printf '%s' "$GITHUB_TOKEN" | git-cli pat create --name release --token-stdin
 ```
 
-Display the full token explicitly:
+Display a PAT:
 
 ```bash
-git-cli pat display release\n# or: git-cli pat display --name release
+git-cli pat display release
+git-cli pat display --name release
 ```
 
-List registered PAT names, delete a PAT, or inspect credential-helper configuration:
+List, delete and inspect the PAT store:
 
 ```bash
 git-cli pat list
-git-cli pat delete release\n# or: git-cli pat delete --name release
+git-cli pat delete release
+git-cli pat delete --name release
 git-cli pat status
 ```
 
-git-cli stores only PAT names in local user metadata under the OS-specific user configuration directory. The credential itself is addressed as a Git credential for `github.com` with a namespaced credential path and remains under the configured credential helper's control.
+The directory is created with mode `0700` and `pat.yaml` with mode `0600`. PAT values are stored as plaintext YAML and therefore rely on filesystem permissions for protection. The file is never written into the repository.
 
 ## Update with update-cli
 
