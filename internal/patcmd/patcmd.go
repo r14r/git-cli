@@ -2,28 +2,21 @@ package patcmd
 
 import (
 	"bufio"
-	"bytes"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
-	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 )
 
-const (
-	credentialProtocol = "https"
-	credentialHost     = "github.com"
-	credentialUsername = "x-access-token"
-)
+const configDirEnv = "GIT_CLI_CONFIG_DIR"
 
-type metadata struct {
-	Names []string `json:"names"`
+type store struct {
+	PATs map[string]string
 }
 
 func Run(args []string, out, errOut io.Writer) int {
@@ -63,9 +56,15 @@ Usage:
   git-cli pat delete --name <NAME>
   git-cli pat status
 
-PAT values are stored through Git's configured credential helper. git-cli stores
-only PAT names in local metadata. Using --token-stdin avoids putting a token in
-shell history or process arguments.`)
+PAT values are stored in pat.yaml below the installation prefix:
+  <prefix>/etc/git-config/pat.yaml
+
+For /usr/local/bin/git-cli this is:
+  /usr/local/etc/git-config/pat.yaml
+
+Set GIT_CLI_CONFIG_DIR to override the config directory.
+The directory is created with mode 0700 and pat.yaml with mode 0600.
+Using --token-stdin avoids putting a token in shell history or process arguments.`)
 }
 
 func create(args []string, out, errOut io.Writer) int {
@@ -87,10 +86,6 @@ func create(args []string, out, errOut io.Writer) int {
 		fmt.Fprintln(errOut, "use exactly one of --token <TOKEN> or --token-stdin")
 		return 2
 	}
-	if err := requireCredentialHelper(); err != nil {
-		fmt.Fprintln(errOut, err)
-		return 2
-	}
 
 	value := *token
 	if *tokenStdin {
@@ -106,28 +101,21 @@ func create(args []string, out, errOut io.Writer) int {
 		return 2
 	}
 
-	if err := credential("approve", n, value); err != nil {
+	s, path, err := loadStore()
+	if err != nil {
+		fmt.Fprintln(errOut, err)
+		return 2
+	}
+	if s.PATs == nil {
+		s.PATs = map[string]string{}
+	}
+	s.PATs[n] = value
+	if err := saveStore(path, s); err != nil {
 		fmt.Fprintln(errOut, err)
 		return 2
 	}
 
-	stored, err := fillCredential(n)
-	if err != nil || stored != value {
-		_ = credential("reject", n, "")
-		if err != nil {
-			fmt.Fprintf(errOut, "credential helper did not persist PAT %q: %v\n", n, err)
-		} else {
-			fmt.Fprintf(errOut, "credential helper roundtrip failed for PAT %q\n", n)
-		}
-		return 2
-	}
-
-	if err := addName(n); err != nil {
-		_ = credential("reject", n, "")
-		fmt.Fprintln(errOut, err)
-		return 2
-	}
-	fmt.Fprintf(out, "Stored PAT %q using Git credential helper.\n", n)
+	fmt.Fprintf(out, "Stored PAT %q in %s.\n", n, path)
 	return 0
 }
 
@@ -136,9 +124,14 @@ func display(args []string, out, errOut io.Writer) int {
 	if code != 0 {
 		return code
 	}
-	value, err := fillCredential(n)
+	s, _, err := loadStore()
 	if err != nil {
 		fmt.Fprintln(errOut, err)
+		return 2
+	}
+	value, ok := s.PATs[n]
+	if !ok || value == "" {
+		fmt.Fprintf(errOut, "PAT %q not found\n", n)
 		return 2
 	}
 	fmt.Fprintln(out, value)
@@ -146,17 +139,21 @@ func display(args []string, out, errOut io.Writer) int {
 }
 
 func list(out, errOut io.Writer) int {
-	m, err := loadMetadata()
+	s, _, err := loadStore()
 	if err != nil {
 		fmt.Fprintln(errOut, err)
 		return 2
 	}
-	if len(m.Names) == 0 {
+	if len(s.PATs) == 0 {
 		fmt.Fprintln(out, "No PATs registered.")
 		return 0
 	}
-	sort.Strings(m.Names)
-	for _, name := range m.Names {
+	names := make([]string, 0, len(s.PATs))
+	for name := range s.PATs {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
 		fmt.Fprintln(out, name)
 	}
 	return 0
@@ -167,11 +164,17 @@ func deletePAT(args []string, out, errOut io.Writer) int {
 	if code != 0 {
 		return code
 	}
-	if err := credential("reject", n, ""); err != nil {
+	s, path, err := loadStore()
+	if err != nil {
 		fmt.Fprintln(errOut, err)
 		return 2
 	}
-	if err := removeName(n); err != nil {
+	if _, ok := s.PATs[n]; !ok {
+		fmt.Fprintf(out, "PAT %q not found.\n", n)
+		return 0
+	}
+	delete(s.PATs, n)
+	if err := saveStore(path, s); err != nil {
 		fmt.Fprintln(errOut, err)
 		return 2
 	}
@@ -180,26 +183,31 @@ func deletePAT(args []string, out, errOut io.Writer) int {
 }
 
 func status(out, errOut io.Writer) int {
-	helpers, err := credentialHelpers()
+	path, err := configPath()
 	if err != nil {
 		fmt.Fprintln(errOut, err)
 		return 2
 	}
-	path, err := metadataPath()
+	fmt.Fprintf(out, "PAT file: %s\n", path)
+	info, err := os.Stat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		fmt.Fprintln(out, "Status: not created")
+		return 0
+	}
 	if err != nil {
 		fmt.Fprintln(errOut, err)
 		return 2
 	}
-	fmt.Fprintf(out, "Credential host: %s\n", credentialHost)
-	fmt.Fprintf(out, "Credential namespace: %s\n", credentialPath("<NAME>"))
-	fmt.Fprintf(out, "Metadata: %s\n", path)
-	if len(helpers) == 0 {
-		fmt.Fprintln(out, "Credential helper: not configured")
+	fmt.Fprintf(out, "Mode: %04o\n", info.Mode().Perm())
+	s, _, err := loadStore()
+	if err != nil {
+		fmt.Fprintln(errOut, err)
+		return 2
+	}
+	fmt.Fprintf(out, "PATs: %d\n", len(s.PATs))
+	if info.Mode().Perm()&0o077 != 0 {
+		fmt.Fprintln(out, "Warning: PAT file is readable or writable by group/others")
 		return 1
-	}
-	fmt.Fprintln(out, "Credential helper(s):")
-	for _, helper := range helpers {
-		fmt.Fprintf(out, "  - %s\n", helper)
 	}
 	return 0
 }
@@ -240,167 +248,120 @@ func normalizeName(name string) (string, error) {
 	return name, nil
 }
 
-func credentialPath(name string) string {
-	return "git-cli/pat/" + url.PathEscape(name)
-}
-
-func credentialInput(name, token string) string {
-	var input strings.Builder
-	fmt.Fprintf(&input, "protocol=%s\nhost=%s\npath=%s\nusername=%s\n", credentialProtocol, credentialHost, credentialPath(name), credentialUsername)
-	if token != "" {
-		fmt.Fprintf(&input, "password=%s\n", token)
+func configPath() (string, error) {
+	if dir := strings.TrimSpace(os.Getenv(configDirEnv)); dir != "" {
+		return filepath.Join(dir, "pat.yaml"), nil
 	}
-	input.WriteString("\n")
-	return input.String()
-}
-
-func credential(action, name, token string) error {
-	cmd := exec.Command("git", "-c", "credential.useHttpPath=true", "credential", action)
-	cmd.Stdin = strings.NewReader(credentialInput(name, token))
-	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		msg := strings.TrimSpace(stderr.String())
-		if msg == "" {
-			msg = err.Error()
-		}
-		return fmt.Errorf("git credential %s failed: %s", action, msg)
-	}
-	return nil
-}
-
-func fillCredential(name string) (string, error) {
-	cmd := exec.Command("git", "-c", "credential.useHttpPath=true", "credential", "fill")
-	cmd.Stdin = strings.NewReader(credentialInput(name, ""))
-	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		msg := strings.TrimSpace(stderr.String())
-		if msg == "" {
-			msg = err.Error()
-		}
-		return "", fmt.Errorf("PAT %q not found: %s", name, msg)
-	}
-
-	s := bufio.NewScanner(bytes.NewReader(stdout.Bytes()))
-	for s.Scan() {
-		line := s.Text()
-		if strings.HasPrefix(line, "password=") {
-			value := strings.TrimPrefix(line, "password=")
-			if value != "" {
-				return value, nil
-			}
-		}
-	}
-	if err := s.Err(); err != nil {
-		return "", err
-	}
-	return "", fmt.Errorf("PAT %q not found", name)
-}
-
-func credentialHelpers() ([]string, error) {
-	cmd := exec.Command("git", "config", "--get-all", "credential.helper")
-	b, err := cmd.Output()
+	exe, err := os.Executable()
 	if err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
-			return nil, nil
-		}
-		return nil, err
+		return "", fmt.Errorf("resolve git-cli executable: %w", err)
 	}
-	var helpers []string
-	for _, line := range strings.Split(string(b), "\n") {
-		line = strings.TrimSpace(line)
-		if line != "" {
-			helpers = append(helpers, line)
-		}
-	}
-	return helpers, nil
+	return configPathForExecutable(exe), nil
 }
 
-func requireCredentialHelper() error {
-	helpers, err := credentialHelpers()
-	if err != nil {
-		return err
-	}
-	if len(helpers) == 0 {
-		return errors.New("no Git credential helper is configured; configure a secure helper before storing PATs")
-	}
-	return nil
+func configPathForExecutable(exe string) string {
+	binDir := filepath.Dir(filepath.Clean(exe))
+	prefix := filepath.Dir(binDir)
+	return filepath.Join(prefix, "etc", "git-config", "pat.yaml")
 }
 
-func metadataPath() (string, error) {
-	dir, err := os.UserConfigDir()
+func loadStore() (store, string, error) {
+	path, err := configPath()
 	if err != nil {
-		return "", err
+		return store{}, "", err
 	}
-	return filepath.Join(dir, "git-cli", "pats.json"), nil
-}
-
-func loadMetadata() (metadata, error) {
-	path, err := metadataPath()
-	if err != nil {
-		return metadata{}, err
-	}
-	b, err := os.ReadFile(path)
+	s := store{PATs: map[string]string{}}
+	f, err := os.Open(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return metadata{}, nil
+		return s, path, nil
 	}
 	if err != nil {
-		return metadata{}, err
+		return store{}, path, err
 	}
-	var m metadata
-	if err := json.Unmarshal(b, &m); err != nil {
-		return metadata{}, fmt.Errorf("read PAT metadata: %w", err)
-	}
-	return m, nil
-}
+	defer f.Close()
 
-func saveMetadata(m metadata) error {
-	path, err := metadataPath()
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return err
-	}
-	sort.Strings(m.Names)
-	b, err := json.MarshalIndent(m, "", "  ")
-	if err != nil {
-		return err
-	}
-	b = append(b, '\n')
-	return os.WriteFile(path, b, 0o600)
-}
-
-func addName(name string) error {
-	m, err := loadMetadata()
-	if err != nil {
-		return err
-	}
-	for _, existing := range m.Names {
-		if existing == name {
-			return saveMetadata(m)
+	scanner := bufio.NewScanner(f)
+	lineNo := 0
+	seenHeader := false
+	for scanner.Scan() {
+		lineNo++
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
 		}
+		if !seenHeader {
+			if line != "pats:" {
+				return store{}, path, fmt.Errorf("%s:%d: expected pats:", path, lineNo)
+			}
+			seenHeader = true
+			continue
+		}
+		key, value, ok := strings.Cut(line, ":")
+		if !ok {
+			return store{}, path, fmt.Errorf("%s:%d: invalid PAT entry", path, lineNo)
+		}
+		name, err := strconv.Unquote(strings.TrimSpace(key))
+		if err != nil {
+			return store{}, path, fmt.Errorf("%s:%d: invalid PAT name: %w", path, lineNo, err)
+		}
+		token, err := strconv.Unquote(strings.TrimSpace(value))
+		if err != nil {
+			return store{}, path, fmt.Errorf("%s:%d: invalid PAT token: %w", path, lineNo, err)
+		}
+		s.PATs[name] = token
 	}
-	m.Names = append(m.Names, name)
-	return saveMetadata(m)
+	if err := scanner.Err(); err != nil {
+		return store{}, path, err
+	}
+	return s, path, nil
 }
 
-func removeName(name string) error {
-	m, err := loadMetadata()
+func saveStore(path string, s store) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return fmt.Errorf("create PAT config directory %s: %w", dir, err)
+	}
+	if err := os.Chmod(dir, 0o700); err != nil {
+		return fmt.Errorf("secure PAT config directory %s: %w", dir, err)
+	}
+
+	names := make([]string, 0, len(s.PATs))
+	for name := range s.PATs {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	var b strings.Builder
+	b.WriteString("# git-cli PAT storage\n")
+	b.WriteString("# Keep this file private.\n")
+	b.WriteString("pats:\n")
+	for _, name := range names {
+		fmt.Fprintf(&b, "  %s: %s\n", strconv.Quote(name), strconv.Quote(s.PATs[name]))
+	}
+
+	tmp, err := os.CreateTemp(dir, ".pat.yaml-*")
 	if err != nil {
+		return fmt.Errorf("create temporary PAT file: %w", err)
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+
+	if err := tmp.Chmod(0o600); err != nil {
+		tmp.Close()
 		return err
 	}
-	out := m.Names[:0]
-	for _, existing := range m.Names {
-		if existing != name {
-			out = append(out, existing)
-		}
+	if _, err := io.WriteString(tmp, b.String()); err != nil {
+		tmp.Close()
+		return err
 	}
-	m.Names = out
-	return saveMetadata(m)
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		return fmt.Errorf("install PAT file %s: %w", path, err)
+	}
+	if err := os.Chmod(path, 0o600); err != nil {
+		return fmt.Errorf("secure PAT file %s: %w", path, err)
+	}
+	return nil
 }
