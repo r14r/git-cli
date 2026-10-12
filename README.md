@@ -2,7 +2,7 @@
 
 `git-cli` is a standalone Go CLI for Git workflow utilities.
 
-Current version: **0.7.0**
+Current version: **0.7.1**
 
 ## Command groups
 
@@ -258,18 +258,18 @@ printf '%s' "$GITHUB_TOKEN" | git-cli pat create --name release --token-stdin
 Display the full token explicitly:
 
 ```bash
-git-cli pat display --name release
+git-cli pat display release\n# or: git-cli pat display --name release
 ```
 
 List registered PAT names, delete a PAT, or inspect credential-helper configuration:
 
 ```bash
 git-cli pat list
-git-cli pat delete --name release
+git-cli pat delete release\n# or: git-cli pat delete --name release
 git-cli pat status
 ```
 
-git-cli stores only PAT names in local user metadata under the OS-specific user configuration directory. The credential itself is addressed as a Git credential for `github.com` with a namespaced username and remains under the configured credential helper's control.
+git-cli stores only PAT names in local user metadata under the OS-specific user configuration directory. The credential itself is addressed as a Git credential for `github.com` with a namespaced credential path and remains under the configured credential helper's control.
 
 ## Update with update-cli
 
