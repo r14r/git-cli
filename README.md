@@ -2,7 +2,7 @@
 
 `git-cli` is a standalone Go CLI for Git workflow utilities.
 
-Current version: **0.6.0**
+Current version: **0.7.0**
 
 ## Command groups
 
@@ -14,7 +14,7 @@ Current version: **0.6.0**
 - `clean` — safe Git cleanup previews and explicit ignored-file cleanup.
 - `large-files` — detect oversized tracked files.
 - `branch` — inspect merged and stale local branches.
-- `doctor` — diagnose Git hooks, scanners and application tooling.
+- `pat` — securely store and manage named GitHub PATs through Git credential helpers.\n- `doctor` — diagnose Git hooks, scanners and application tooling.
 
 ## Build and install
 
@@ -237,6 +237,39 @@ git-cli doctor
 `doctor` diagnoses environment/configuration correctness: repository access, hooks, secret scanners, security config, detected application preset and required runtimes.
 
 `repo health` is complementary: it reports the quality/state of the repository itself.
+
+
+## PAT management
+
+Named GitHub personal access tokens can be stored through Git's configured credential helper. On macOS this commonly means Keychain; other platforms can use Git Credential Manager or another configured helper. Token values are not stored in the repository and are not written to git-cli metadata.
+
+Store a PAT:
+
+```bash
+git-cli pat create --name release --token <TOKEN>
+```
+
+Safer input that avoids placing the token in shell history or process arguments:
+
+```bash
+printf '%s' "$GITHUB_TOKEN" | git-cli pat create --name release --token-stdin
+```
+
+Display the full token explicitly:
+
+```bash
+git-cli pat display --name release
+```
+
+List registered PAT names, delete a PAT, or inspect credential-helper configuration:
+
+```bash
+git-cli pat list
+git-cli pat delete --name release
+git-cli pat status
+```
+
+git-cli stores only PAT names in local user metadata under the OS-specific user configuration directory. The credential itself is addressed as a Git credential for `github.com` with a namespaced username and remains under the configured credential helper's control.
 
 ## Update with update-cli
 
