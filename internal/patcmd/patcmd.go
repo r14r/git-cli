@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,7 +19,7 @@ import (
 const (
 	credentialProtocol = "https"
 	credentialHost     = "github.com"
-	usernamePrefix     = "git-cli-pat:"
+	credentialUsername = "x-access-token"
 )
 
 type metadata struct {
@@ -55,8 +56,10 @@ func help(w io.Writer) {
 Usage:
   git-cli pat create --name <NAME> --token <TOKEN>
   printf '%s' "$GITHUB_TOKEN" | git-cli pat create --name <NAME> --token-stdin
+  git-cli pat display <NAME>
   git-cli pat display --name <NAME>
   git-cli pat list
+  git-cli pat delete <NAME>
   git-cli pat delete --name <NAME>
   git-cli pat status
 
@@ -107,6 +110,18 @@ func create(args []string, out, errOut io.Writer) int {
 		fmt.Fprintln(errOut, err)
 		return 2
 	}
+
+	stored, err := fillCredential(n)
+	if err != nil || stored != value {
+		_ = credential("reject", n, "")
+		if err != nil {
+			fmt.Fprintf(errOut, "credential helper did not persist PAT %q: %v\n", n, err)
+		} else {
+			fmt.Fprintf(errOut, "credential helper roundtrip failed for PAT %q\n", n)
+		}
+		return 2
+	}
+
 	if err := addName(n); err != nil {
 		_ = credential("reject", n, "")
 		fmt.Fprintln(errOut, err)
@@ -117,16 +132,9 @@ func create(args []string, out, errOut io.Writer) int {
 }
 
 func display(args []string, out, errOut io.Writer) int {
-	fs := flag.NewFlagSet("pat display", flag.ContinueOnError)
-	fs.SetOutput(errOut)
-	name := fs.String("name", "", "PAT name")
-	if err := fs.Parse(args); err != nil {
-		return 2
-	}
-	n, err := normalizeName(*name)
-	if err != nil {
-		fmt.Fprintln(errOut, err)
-		return 2
+	n, code := parseNameArgs("pat display", args, errOut)
+	if code != 0 {
+		return code
 	}
 	value, err := fillCredential(n)
 	if err != nil {
@@ -155,16 +163,9 @@ func list(out, errOut io.Writer) int {
 }
 
 func deletePAT(args []string, out, errOut io.Writer) int {
-	fs := flag.NewFlagSet("pat delete", flag.ContinueOnError)
-	fs.SetOutput(errOut)
-	name := fs.String("name", "", "PAT name")
-	if err := fs.Parse(args); err != nil {
-		return 2
-	}
-	n, err := normalizeName(*name)
-	if err != nil {
-		fmt.Fprintln(errOut, err)
-		return 2
+	n, code := parseNameArgs("pat delete", args, errOut)
+	if code != 0 {
+		return code
 	}
 	if err := credential("reject", n, ""); err != nil {
 		fmt.Fprintln(errOut, err)
@@ -190,6 +191,7 @@ func status(out, errOut io.Writer) int {
 		return 2
 	}
 	fmt.Fprintf(out, "Credential host: %s\n", credentialHost)
+	fmt.Fprintf(out, "Credential namespace: %s\n", credentialPath("<NAME>"))
 	fmt.Fprintf(out, "Metadata: %s\n", path)
 	if len(helpers) == 0 {
 		fmt.Fprintln(out, "Credential helper: not configured")
@@ -202,10 +204,35 @@ func status(out, errOut io.Writer) int {
 	return 0
 }
 
+func parseNameArgs(command string, args []string, errOut io.Writer) (string, int) {
+	fs := flag.NewFlagSet(command, flag.ContinueOnError)
+	fs.SetOutput(errOut)
+	name := fs.String("name", "", "PAT name")
+	if err := fs.Parse(args); err != nil {
+		return "", 2
+	}
+	value := strings.TrimSpace(*name)
+	if value == "" && fs.NArg() == 1 {
+		value = fs.Arg(0)
+	} else if value != "" && fs.NArg() != 0 {
+		fmt.Fprintln(errOut, "use either positional NAME or --name <NAME>, not both")
+		return "", 2
+	} else if value == "" && fs.NArg() > 1 {
+		fmt.Fprintln(errOut, "too many positional arguments")
+		return "", 2
+	}
+	n, err := normalizeName(value)
+	if err != nil {
+		fmt.Fprintln(errOut, err)
+		return "", 2
+	}
+	return n, 0
+}
+
 func normalizeName(name string) (string, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
-		return "", errors.New("--name is required")
+		return "", errors.New("PAT name is required")
 	}
 	if strings.ContainsAny(name, "\r\n\x00") {
 		return "", errors.New("PAT name contains invalid characters")
@@ -213,20 +240,23 @@ func normalizeName(name string) (string, error) {
 	return name, nil
 }
 
-func username(name string) string {
-	return usernamePrefix + name
+func credentialPath(name string) string {
+	return "git-cli/pat/" + url.PathEscape(name)
 }
 
-func credential(action, name, token string) error {
+func credentialInput(name, token string) string {
 	var input strings.Builder
-	fmt.Fprintf(&input, "protocol=%s\nhost=%s\nusername=%s\n", credentialProtocol, credentialHost, username(name))
-	if action == "approve" {
+	fmt.Fprintf(&input, "protocol=%s\nhost=%s\npath=%s\nusername=%s\n", credentialProtocol, credentialHost, credentialPath(name), credentialUsername)
+	if token != "" {
 		fmt.Fprintf(&input, "password=%s\n", token)
 	}
 	input.WriteString("\n")
+	return input.String()
+}
 
-	cmd := exec.Command("git", "credential", action)
-	cmd.Stdin = strings.NewReader(input.String())
+func credential(action, name, token string) error {
+	cmd := exec.Command("git", "-c", "credential.useHttpPath=true", "credential", action)
+	cmd.Stdin = strings.NewReader(credentialInput(name, token))
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -241,9 +271,8 @@ func credential(action, name, token string) error {
 }
 
 func fillCredential(name string) (string, error) {
-	input := fmt.Sprintf("protocol=%s\nhost=%s\nusername=%s\n\n", credentialProtocol, credentialHost, username(name))
-	cmd := exec.Command("git", "credential", "fill")
-	cmd.Stdin = strings.NewReader(input)
+	cmd := exec.Command("git", "-c", "credential.useHttpPath=true", "credential", "fill")
+	cmd.Stdin = strings.NewReader(credentialInput(name, ""))
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

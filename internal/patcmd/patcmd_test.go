@@ -1,6 +1,9 @@
 package patcmd
 
-import "testing"
+import (
+	"bytes"
+	"testing"
+)
 
 func TestNormalizeName(t *testing.T) {
 	got, err := normalizeName(" release ")
@@ -18,8 +21,33 @@ func TestNormalizeNameRejectsEmpty(t *testing.T) {
 	}
 }
 
-func TestUsernameUsesNamespace(t *testing.T) {
-	if got := username("deploy"); got != "git-cli-pat:deploy" {
-		t.Fatalf("username() = %q", got)
+func TestCredentialPathNamespacesName(t *testing.T) {
+	got := credentialPath("deploy token")
+	if got != "git-cli/pat/deploy%20token" {
+		t.Fatalf("credentialPath() = %q", got)
+	}
+}
+
+func TestParseNameArgsPositional(t *testing.T) {
+	var errOut bytes.Buffer
+	got, code := parseNameArgs("pat display", []string{"release"}, &errOut)
+	if code != 0 || got != "release" {
+		t.Fatalf("got=%q code=%d err=%q", got, code, errOut.String())
+	}
+}
+
+func TestParseNameArgsFlag(t *testing.T) {
+	var errOut bytes.Buffer
+	got, code := parseNameArgs("pat display", []string{"--name", "release"}, &errOut)
+	if code != 0 || got != "release" {
+		t.Fatalf("got=%q code=%d err=%q", got, code, errOut.String())
+	}
+}
+
+func TestParseNameArgsRejectsBoth(t *testing.T) {
+	var errOut bytes.Buffer
+	_, code := parseNameArgs("pat display", []string{"--name", "release", "other"}, &errOut)
+	if code != 2 {
+		t.Fatalf("code=%d err=%q", code, errOut.String())
 	}
 }
