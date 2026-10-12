@@ -35,7 +35,7 @@ Usage:
   git-cli clean <command>          Safely preview/remove generated files
   git-cli large-files scan         Find large tracked files
   git-cli branch <command>         Inspect merged/stale branches
-  git-cli pat <command>            Store/manage Git PATs via credential helper
+  git-cli pat <command>            Store/manage Git PATs in local YAML config
   git-cli doctor                   Diagnose repository/tooling setup
   git-cli version                  Show version
 `)
