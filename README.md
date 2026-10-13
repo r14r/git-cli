@@ -2,7 +2,7 @@
 
 `git-cli` is a standalone Go CLI for Git workflow utilities.
 
-Current version: **0.8.1**
+Current version: **0.8.2**
 
 ## Command groups
 
@@ -389,7 +389,7 @@ GitHub Actions:
   actions-state-verbose, actions-delete, actions-delete-verbose
 
 Release:
-  clean-build, release, release-list
+  clean, clean-build, release, release-list
 ```
 
 ## Update with update-cli
