@@ -96,9 +96,13 @@ Supported --state values:
   completed, action_required, cancelled, failure, neutral, skipped, stale,
   success, timed_out, in_progress, queued, requested, waiting, pending
 
+Output:
+  --verbose  workflow name and effective state only
+  --details  full workflow run details and authentication source
+
 Authentication:
-  1. GITHUB_TOKEN environment variable
-  2. --pat NAME from git-cli encrypted PAT storage
+  1. --pat NAME from git-cli encrypted PAT storage
+  2. GITHUB_TOKEN environment variable
   3. automatically use the PAT if exactly one PAT is stored
 
 list can access public repositories without authentication.
