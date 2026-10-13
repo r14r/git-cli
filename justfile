@@ -257,7 +257,7 @@ clean-build:
 # Build a release ZIP and checksum.
 release: clean-build check build
     mkdir -p release/git-cli-v{{version}}
-    cp -R cmd internal go.mod VERSION README.md LICENSE .git-cli.yaml .gitignore update-cli.yaml .updater-cli justfile release/git-cli-v{{version}}/
+    cp -R cmd internal docs go.mod VERSION README.md LICENSE .git-cli.yaml .gitignore update-cli.yaml .updater-cli justfile release/git-cli-v{{version}}/
     (cd release && zip -qr git-cli-v{{version}}.zip git-cli-v{{version}})
     shasum -a 256 release/git-cli-v{{version}}.zip
 
