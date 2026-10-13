@@ -384,4 +384,3 @@ func printRun(w io.Writer, run workflowRun, verbose, details bool) {
 	fmt.Fprintf(w, "%d\t%-12s\t%-20s\t%s\n", run.ID, effectiveState(run), run.HeadBranch, run.Name)
 	return
 }
-
