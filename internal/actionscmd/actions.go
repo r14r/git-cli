@@ -159,24 +159,32 @@ func normalizeRepository(value string) (string, error) {
 	return parts[0] + "/" + parts[1], nil
 }
 
-func authToken(patName string) (string, error) {
-	if token := strings.TrimSpace(os.Getenv("GITHUB_TOKEN")); token != "" {
-		return token, nil
-	}
+func authToken(patName string) (string, string, error) {
 	if patName != "" {
-		return patcmd.ResolveToken(patName)
+		token, err := patcmd.ResolveToken(patName)
+		if err != nil {
+			return "", "", err
+		}
+		return token, "pat:" + patName, nil
+	}
+	if token := strings.TrimSpace(os.Getenv("GITHUB_TOKEN")); token != "" {
+		return token, "GITHUB_TOKEN", nil
 	}
 	names, err := patcmd.TokenNames()
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	if len(names) == 1 {
-		return patcmd.ResolveToken(names[0])
+		token, err := patcmd.ResolveToken(names[0])
+		if err != nil {
+			return "", "", err
+		}
+		return token, "pat:" + names[0], nil
 	}
 	if len(names) > 1 {
-		return "", errors.New("multiple PATs are stored; select one with --pat NAME or set GITHUB_TOKEN")
+		return "", "", errors.New("multiple PATs are stored; select one with --pat NAME or set GITHUB_TOKEN")
 	}
-	return "", nil
+	return "", "anonymous", nil
 }
 
 func list(args []string, out, errOut io.Writer) int {
@@ -184,10 +192,13 @@ func list(args []string, out, errOut io.Writer) int {
 	if code != 0 {
 		return code
 	}
-	token, err := authToken(o.patName)
+	token, authSource, err := authToken(o.patName)
 	if err != nil {
 		fmt.Fprintln(errOut, err)
 		return 2
+	}
+	if o.verbose {
+		fmt.Fprintf(out, "Repository: %s\nAuthentication: %s\n\n", o.repository, authSource)
 	}
 	runs, err := fetchRuns(o.repository, o.state, token)
 	if err != nil {
@@ -210,10 +221,13 @@ func deleteRuns(args []string, out, errOut io.Writer) int {
 	if code != 0 {
 		return code
 	}
-	token, err := authToken(o.patName)
+	token, authSource, err := authToken(o.patName)
 	if err != nil {
 		fmt.Fprintln(errOut, err)
 		return 2
+	}
+	if o.verbose {
+		fmt.Fprintf(out, "Repository: %s\nAuthentication: %s\n\n", o.repository, authSource)
 	}
 	if token == "" {
 		fmt.Fprintln(errOut, "authentication is required for actions delete; set GITHUB_TOKEN or use --pat NAME")
@@ -259,14 +273,17 @@ func fetchRuns(repository, state, token string) ([]workflowRun, error) {
 		if err != nil {
 			return nil, err
 		}
-		var doc workflowRunsResponse
-		decodeErr := json.NewDecoder(io.LimitReader(resp.Body, 8<<20)).Decode(&doc)
+		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 		resp.Body.Close()
-		if resp.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("GitHub Actions list failed: HTTP %d", resp.StatusCode)
+		if readErr != nil {
+			return nil, readErr
 		}
-		if decodeErr != nil {
-			return nil, decodeErr
+		if resp.StatusCode != http.StatusOK {
+			return nil, githubHTTPError("GitHub Actions list", resp.StatusCode, body, true)
+		}
+		var doc workflowRunsResponse
+		if err := json.Unmarshal(body, &doc); err != nil {
+			return nil, err
 		}
 		all = append(all, doc.WorkflowRuns...)
 		if len(doc.WorkflowRuns) < 100 || len(all) >= 1000 {
@@ -289,9 +306,35 @@ func deleteRun(repository string, runID int64, token string) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
-		return fmt.Errorf("GitHub returned HTTP %d", resp.StatusCode)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		return githubHTTPError("GitHub Actions delete", resp.StatusCode, body, false)
 	}
 	return nil
+}
+
+func githubHTTPError(operation string, status int, body []byte, readOnly bool) error {
+	var apiErr struct {
+		Message          string `json:"message"`
+		DocumentationURL string `json:"documentation_url"`
+	}
+	_ = json.Unmarshal(body, &apiErr)
+	msg := strings.TrimSpace(apiErr.Message)
+	if msg == "" {
+		msg = http.StatusText(status)
+	}
+
+	var hint string
+	if status == http.StatusForbidden || status == http.StatusUnauthorized {
+		if readOnly {
+			hint = "private repositories require a token with Actions: read (fine-grained PAT) or repo scope (classic PAT)"
+		} else {
+			hint = "deleting workflow runs requires Actions: write (fine-grained PAT) or repo scope with write access (classic PAT)"
+		}
+	}
+	if hint != "" {
+		return fmt.Errorf("%s failed: HTTP %d: %s; %s", operation, status, msg, hint)
+	}
+	return fmt.Errorf("%s failed: HTTP %d: %s", operation, status, msg)
 }
 
 func setHeaders(req *http.Request, token string) {

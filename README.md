@@ -2,7 +2,7 @@
 
 `git-cli` is a standalone Go CLI for Git workflow utilities.
 
-Current version: **0.8.2**
+Current version: **0.8.3**
 
 ## Command groups
 
@@ -339,13 +339,13 @@ pending
 
 Authentication order:
 
-1. `GITHUB_TOKEN`
-2. `--pat NAME` using encrypted git-cli PAT storage
+1. explicit `--pat NAME` using encrypted git-cli PAT storage
+2. `GITHUB_TOKEN`
 3. the stored PAT automatically when exactly one PAT exists
 
-Public repositories can be listed without authentication. Deleting runs requires a token with GitHub Actions write permission.
+Public repositories can be listed without authentication. Private repositories require **Actions: read** for a fine-grained PAT, or `repo` for a classic PAT. Deleting runs requires **Actions: write** for a fine-grained PAT. On HTTP 401/403, git-cli now includes GitHub's API error message plus the required permission hint.
 
-With `--verbose`, output includes run ID, workflow/title, state/status/conclusion, branch, event, commit SHA, run number/attempt, actor, timestamps, and GitHub URL.
+With `--verbose`, output includes the selected authentication source (never the token value), plus run ID, workflow/title, state/status/conclusion, branch, event, commit SHA, run number/attempt, actor, timestamps, and GitHub URL.
 
 
 ## Justfile
