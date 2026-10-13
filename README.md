@@ -2,7 +2,7 @@
 
 `git-cli` is a standalone Go CLI for Git workflow utilities.
 
-Current version: **0.7.3**
+Current version: **0.8.0**
 
 ## Command groups
 
@@ -14,7 +14,7 @@ Current version: **0.7.3**
 - `clean` — safe Git cleanup previews and explicit ignored-file cleanup.
 - `large-files` — detect oversized tracked files.
 - `branch` — inspect merged and stale local branches.
-- `pat` — securely store and manage named GitHub PATs through Git credential helpers.\n- `doctor` — diagnose Git hooks, scanners and application tooling.
+- `pat` — securely store and manage named GitHub PATs through Git credential helpers.\n- `actions` — list and delete GitHub Actions workflow runs by state.\n- `doctor` — diagnose Git hooks, scanners and application tooling.
 
 ## Build and install
 
@@ -298,6 +298,55 @@ git-cli pat secure
 ```
 
 The directory is created with mode `0700`. `pat.yaml` and the separate encryption key `pat.key` use mode `0600`. PAT values are encrypted with AES-256-GCM and stored as `enc:v1:...` ciphertext in `pat.yaml`. Run `git-cli pat secure` once to migrate plaintext entries created by v0.7.2. The files are never written into the repository.
+
+## GitHub Actions
+
+List workflow runs:
+
+```bash
+git-cli actions list --repository r14r/git-cli
+git-cli actions list --repository r14r/git-cli --state failure
+git-cli actions list --repository r14r/git-cli --state success --verbose
+```
+
+Delete all workflow runs matching a state:
+
+```bash
+git-cli actions delete --repository r14r/git-cli --state failure
+git-cli actions delete --repository r14r/git-cli --state cancelled --verbose
+```
+
+`actions delete` requires `--state` so an unfiltered bulk delete cannot happen accidentally.
+
+Supported states follow GitHub's workflow-run API:
+
+```text
+completed
+action_required
+cancelled
+failure
+neutral
+skipped
+stale
+success
+timed_out
+in_progress
+queued
+requested
+waiting
+pending
+```
+
+Authentication order:
+
+1. `GITHUB_TOKEN`
+2. `--pat NAME` using encrypted git-cli PAT storage
+3. the stored PAT automatically when exactly one PAT exists
+
+Public repositories can be listed without authentication. Deleting runs requires a token with GitHub Actions write permission.
+
+With `--verbose`, output includes run ID, workflow/title, state/status/conclusion, branch, event, commit SHA, run number/attempt, actor, timestamps, and GitHub URL.
+
 
 ## Update with update-cli
 

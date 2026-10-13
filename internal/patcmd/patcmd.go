@@ -597,3 +597,35 @@ func decryptToken(key []byte, value string) (string, error) {
 	}
 	return string(plain), nil
 }
+
+func TokenNames() ([]string, error) {
+	s, _, err := loadStore()
+	if err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(s.PATs))
+	for name := range s.PATs {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names, nil
+}
+
+func ResolveToken(name string) (string, error) {
+	s, _, err := loadStore()
+	if err != nil {
+		return "", err
+	}
+	value, ok := s.PATs[name]
+	if !ok || value == "" {
+		return "", fmt.Errorf("PAT %q not found", name)
+	}
+	if !strings.HasPrefix(value, encPrefix) {
+		return "", fmt.Errorf("PAT %q is stored in plaintext; run 'git-cli pat secure' first", name)
+	}
+	key, err := loadKey()
+	if err != nil {
+		return "", err
+	}
+	return decryptToken(key, value)
+}

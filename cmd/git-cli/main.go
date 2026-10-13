@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"git-cli/internal/actionscmd"
 	"git-cli/internal/app"
 	"git-cli/internal/branchcmd"
 	"git-cli/internal/cleancmd"
@@ -36,6 +37,7 @@ Usage:
   git-cli large-files scan         Find large tracked files
   git-cli branch <command>         Inspect merged/stale branches
   git-cli pat <command>            Store/manage Git PATs in local YAML config
+  git-cli actions <command>        List/delete GitHub Actions workflow runs
   git-cli doctor                   Diagnose repository/tooling setup
   git-cli version                  Show version
 `)
@@ -61,6 +63,8 @@ Usage:
 		os.Exit(branchcmd.Run(args[1:], os.Stdout, os.Stderr))
 	case "pat":
 		os.Exit(patcmd.Run(args[1:], os.Stdout, os.Stderr))
+	case "actions":
+		os.Exit(actionscmd.Run(args[1:], os.Stdout, os.Stderr))
 	case "doctor":
 		os.Exit(doctor.Run(os.Stdout, os.Stderr))
 	case "hook":
