@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="356" viewBox="0 0 1200 356">
+<style>
+.bg{fill:#0d1117}.bar{fill:#161b22}.line{fill:#e6edf3;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:18px}.title{fill:#c9d1d9;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:16px}.red{fill:#ff5f56}.yellow{fill:#ffbd2e}.green{fill:#27c93f}
+</style>
+<rect class="bg" width="100%" height="100%" rx="14"/>
+<rect class="bar" width="100%" height="44" rx="14"/>
+<circle class="red" cx="24" cy="22" r="7"/><circle class="yellow" cx="48" cy="22" r="7"/><circle class="green" cx="72" cy="22" r="7"/>
+<text x="96" y="28" class="title">07-clean.svg</text>
+<text x="36" y="72" class="line">$ git-cli clean preview</text>
+<text x="36" y="100" class="line">Would remove tmp/</text>
+<text x="36" y="128" class="line">Would remove dist/debug.log</text>
+<text x="36" y="156" class="line"></text>
+<text x="36" y="184" class="line">$ git-cli clean ignored --preview</text>
+<text x="36" y="212" class="line">Would remove .cache/</text>
+<text x="36" y="240" class="line"></text>
+<text x="36" y="268" class="line">$ git-cli clean ignored --apply</text>
+<text x="36" y="296" class="line">Removed ignored files/directories.</text>
+</svg>
