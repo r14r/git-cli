@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="220" viewBox="0 0 1200 220">
+<style>
+.bg{fill:#0d1117}.bar{fill:#161b22}.line{fill:#e6edf3;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:18px}.title{fill:#c9d1d9;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:16px}.red{fill:#ff5f56}.yellow{fill:#ffbd2e}.green{fill:#27c93f}
+</style>
+<rect class="bg" width="100%" height="100%" rx="14"/>
+<rect class="bar" width="100%" height="44" rx="14"/>
+<circle class="red" cx="24" cy="22" r="7"/><circle class="yellow" cx="48" cy="22" r="7"/><circle class="green" cx="72" cy="22" r="7"/>
+<text x="96" y="28" class="title">11-actions-list.svg</text>
+<text x="36" y="72" class="line">$ git-cli actions list --repository r14r/Templates_Docker-Compose --pat git-cli</text>
+<text x="36" y="100" class="line">383700001   success      main                 CI</text>
+<text x="36" y="128" class="line">383699221   failure      feature/test         CI</text>
+<text x="36" y="156" class="line">Runs: 2</text>
+</svg>
