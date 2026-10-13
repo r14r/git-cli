@@ -1,22 +1,32 @@
 # git-cli
 
-`git-cli` is a standalone Go CLI for Git workflow utilities.
+`git-cli` is a standalone Go command-line tool for Git repository maintenance, secret scanning, application-aware pre-commit checks, `.gitignore` management, encrypted PAT storage, repository diagnostics, and GitHub Actions workflow-run management.
 
-Current version: **0.8.5**
+**Current version: 0.9.0**
 
-## Command groups
+## Contents
 
-- `security` — secret scanning and commit protection.
-- `precommit` — application-aware pre-commit setup and staged-code validation.
-- `gitignore` — create, maintain and diagnose `.gitignore` rules.
-- `project` — detect and inspect the current application type.
-- `repo` — repository health diagnostics.
-- `clean` — safe Git cleanup previews and explicit ignored-file cleanup.
-- `large-files` — detect oversized tracked files.
-- `branch` — inspect merged and stale local branches.
-- `pat` — securely store and manage named GitHub PATs through Git credential helpers.\n- `actions` — list and delete GitHub Actions workflow runs by state.\n- `doctor` — diagnose Git hooks, scanners and application tooling.
+- [Installation](#installation)
+- [Global commands](#global-commands)
+- [Security](#security)
+- [Pre-commit](#pre-commit)
+- [Gitignore](#gitignore)
+- [Project inspection](#project-inspection)
+- [Repository health](#repository-health)
+- [Cleanup](#cleanup)
+- [Large files](#large-files)
+- [Branch inspection](#branch-inspection)
+- [PAT management](#pat-management)
+- [GitHub Actions](#github-actions)
+- [Doctor](#doctor)
+- [Hook dispatcher](#hook-dispatcher)
+- [Justfile](#justfile)
+- [update-cli integration](#update-cli-integration)
+- [Exit codes](#exit-codes)
 
-## Build and install
+## Installation
+
+Build and install from source:
 
 ```bash
 just check
@@ -24,128 +34,141 @@ just build
 sudo just install
 ```
 
-Default binary installation path: `/usr/local/bin/git-cli`.
+Default installation path:
 
-## Repository intelligence
-
-### Repository health
-
-```bash
-git-cli repo health
+```text
+/usr/local/bin/git-cli
 ```
 
-The health report checks the current branch, working-tree state, upstream configuration, ahead/behind counts, `.gitignore`, and tracked files that now match ignore rules. Exit code `1` means actionable repository issues were found; exit code `2` means the command itself could not run.
-
-### Explain ignore rules
+Verify:
 
 ```bash
-git-cli gitignore explain .env
-git-cli gitignore explain .env dist/output.json
+git-cli --version
+git-cli help
 ```
 
-This wraps `git check-ignore -v --no-index`, so the output shows the matching ignore source, line and pattern. Tracked files can also be inspected.
+![Global help and version](docs/screenshots/01-help.svg)
 
-Find files which are already tracked even though current ignore rules match them:
+## Global commands
+
+| Command | Purpose |
+|---|---|
+| `git-cli help`, `--help`, `-h` | Show top-level help |
+| `git-cli version`, `--version`, `-v` | Show embedded binary version |
+| `git-cli doctor` | Diagnose repository/tooling setup |
+| `git-cli hook run pre-commit` | Internal hook dispatcher |
+
+Top-level command groups:
+
+| Group | Purpose |
+|---|---|
+| `security` | Secret scanning and security hook management |
+| `precommit` | Application-aware staged-code checks |
+| `gitignore` | Create, inspect and maintain `.gitignore` |
+| `project` | Detect application type |
+| `repo` | Repository health |
+| `clean` | Safe cleanup |
+| `large-files` | Detect oversized tracked files |
+| `branch` | Inspect merged/stale local branches |
+| `pat` | Encrypted local GitHub PAT storage |
+| `actions` | GitHub Actions workflow-run management |
+
+---
+
+## Security
+
+Security integrates Gitleaks, detect-secrets and optional TruffleHog.
+
+### Commands
+
+| Command | Parameters | Description |
+|---|---|---|
+| `security install` | none | Install managed security pre-commit hook |
+| `security uninstall` | none | Remove managed security hook |
+| `security status` | none | Show security configuration |
+| `security check-staged` | `--json`, `--timeout DURATION` | Scan staged changes |
+| `security check` | `--json`, `--timeout DURATION` | Scan repository |
+| `security check --deep` | `--json`, `--timeout DURATION` | Deep scan using supported deep scanner |
+| `security check-history` | `--json`, `--timeout DURATION` | Scan Git history |
+| `security scanner list` | none | List scanners and supported modes |
+| `security scanner status` | none | Show enabled/required/installed state |
+
+### Parameters
+
+| Parameter | Default | Meaning |
+|---|---:|---|
+| `--json` | false | Emit machine-readable JSON |
+| `--timeout` | `2m` | Maximum scan duration |
+| `--deep` | false | Select deep repository scan mode |
+
+Examples:
 
 ```bash
-git-cli gitignore tracked
+git-cli security install
+git-cli security status
+git-cli security check-staged
+git-cli security check --json
+git-cli security check --timeout 5m
+git-cli security check --deep
+git-cli security check-history
+git-cli security scanner list
+git-cli security scanner status
+git-cli security uninstall
 ```
 
-The command is read-only. It suggests `git rm --cached <path>` but never modifies the index automatically.
+![Security examples](docs/screenshots/02-security.svg)
 
-### Safe cleanup
+---
 
-Preview untracked files that Git could clean:
+## Pre-commit
+
+Application-aware pre-commit checks are configured separately from secret scanning. The generated hook dispatches security checks first, then application-specific checks.
+
+### Supported presets
+
+```text
+python
+fastapi
+django
+laravel
+```
+
+### Commands and parameters
+
+| Command | Parameters | Description |
+|---|---|---|
+| `precommit --setup --for PRESET` | `--setup`, `--for` | Install configuration for explicit preset |
+| `precommit --setup --scan` | `--setup`, `--scan` | Auto-detect preset |
+| `precommit run` | none | Run configured staged checks |
+| `precommit status` | none | Show hook/config status |
+| `precommit list` | none | List supported presets |
+| `precommit uninstall` | none | Remove application checks while retaining security scanning |
+
+`--for` and `--scan` are mutually exclusive.
+
+Examples:
 
 ```bash
-git-cli clean preview
+git-cli precommit --setup --for python
+git-cli precommit --setup --for fastapi
+git-cli precommit --setup --for django
+git-cli precommit --setup --for laravel
+git-cli precommit --setup --scan
+git-cli precommit run
+git-cli precommit status
+git-cli precommit list
+git-cli precommit uninstall
 ```
 
-Preview only ignored files:
+![Pre-commit examples](docs/screenshots/03-precommit.svg)
 
-```bash
-git-cli clean ignored --preview
-```
+---
 
-Explicitly remove ignored files/directories:
+## Gitignore
 
-```bash
-git-cli clean ignored --apply
-```
+`git-cli gitignore` preserves hand-written rules and manages only marked sections.
 
-The destructive path requires the explicit `--apply` option. It maps to Git's ignored-only clean mode (`git clean -fdX`).
-
-### Large tracked files
-
-```bash
-git-cli large-files scan
-git-cli large-files scan --threshold-mb 50
-```
-
-The default threshold is 25 MB. The scanner reads Git index blob sizes and reports large tracked files without modifying the repository.
-
-### Branch inspection
-
-List local branches already merged into the current `HEAD`, excluding the current branch and conventional `main`/`master` branches:
-
-```bash
-git-cli branch merged
-```
-
-List local branches ordered by commit date:
-
-```bash
-git-cli branch stale
-```
-
-These commands are read-only. Branch deletion is intentionally not automatic in v0.6.0.
-
-## Gitignore management
-
-`git-cli` can create or extend `.gitignore` without overwriting hand-written rules. Managed template content is stored in marked sections and can be refreshed or removed independently.
-
-### Add a project preset
-
-```bash
-git-cli gitignore add --for python
-git-cli gitignore add --for fastapi
-git-cli gitignore add --for django
-git-cli gitignore add --for laravel
-git-cli gitignore add --for go
-git-cli gitignore add --for node
-```
-
-Automatically detect the current project and apply the matching preset:
-
-```bash
-git-cli gitignore add --scan
-```
-
-### Browse and use GitHub templates
-
-The template catalog is loaded from the public `github/gitignore` repository.
-
-```bash
-git-cli gitignore list
-git-cli gitignore list --filter python
-git-cli gitignore list --filter jetbrains
-
-git-cli gitignore add --template Python
-git-cli gitignore add --template Global/macOS
-git-cli gitignore add --template Global/JetBrains
-
-git-cli gitignore show --for django
-git-cli gitignore show --template Python
-
-git-cli gitignore download --template Python
-git-cli gitignore download --template Global/macOS --output macOS.gitignore
-
-git-cli gitignore status
-git-cli gitignore remove --for django
-git-cli gitignore presets
-```
-
-A managed section looks like:
+Managed blocks use this form:
 
 ```text
 # >>> git-cli gitignore: django
@@ -153,67 +176,67 @@ A managed section looks like:
 # <<< git-cli gitignore: django
 ```
 
-Running the same `add` command again refreshes that section while leaving other `.gitignore` content untouched.
+### Presets
 
-## Security
+Built-in preset names currently include:
 
-The default scanners are:
-
-- **Gitleaks** — staged, repository and history scans.
-- **detect-secrets** — staged and repository scans.
-- **TruffleHog** — optional deep/history scanner.
-
-On macOS:
-
-```bash
-brew install gitleaks detect-secrets trufflehog
+```text
+python fastapi django go node javascript typescript react
+nextjs vue nuxt laravel
 ```
 
-Commands:
+### Commands and parameters
+
+| Command | Parameters | Description |
+|---|---|---|
+| `gitignore add` / `create` | `--for PRESET` | Add/refresh managed preset block |
+| `gitignore add` / `create` | `--template TEMPLATE` | Add GitHub gitignore template |
+| `gitignore add` / `create` | `--scan` | Detect project and add preset |
+| `gitignore list` | `--filter TERM` | List GitHub templates, optionally filtered |
+| `gitignore presets` | none | List built-in presets |
+| `gitignore show` | `--for PRESET` | Preview managed preset |
+| `gitignore show` | `--template TEMPLATE` | Preview template |
+| `gitignore download` | `--template TEMPLATE`, `--output FILE` | Download raw template |
+| `gitignore status` | none | Show managed sections |
+| `gitignore remove` | `--for PRESET` or `--template TEMPLATE` | Remove managed block |
+| `gitignore explain` | `PATH [PATH...]` | Explain matching ignore rule |
+| `gitignore tracked` | none | Show tracked files that match ignore rules |
+
+Examples:
 
 ```bash
-git-cli security install
-git-cli security check-staged
-git-cli security check
-git-cli security check --deep
-git-cli security check-history
-git-cli security scanner list
-git-cli security scanner status
-git-cli security status
-git-cli security uninstall
+git-cli gitignore add --for django
+git-cli gitignore add --scan
+git-cli gitignore add --template Python
+git-cli gitignore add --template Global/macOS
+git-cli gitignore list
+git-cli gitignore list --filter python
+git-cli gitignore presets
+git-cli gitignore show --for django
+git-cli gitignore show --template Python
+git-cli gitignore download --template Python
+git-cli gitignore download --template Global/macOS --output macOS.gitignore
+git-cli gitignore status
+git-cli gitignore remove --for django
+git-cli gitignore explain .env
+git-cli gitignore explain .env dist/output.json
+git-cli gitignore tracked
 ```
 
-Security configuration is stored in `.git-cli.yaml`.
+![Gitignore examples](docs/screenshots/04-gitignore.svg)
 
-## Application-aware pre-commit
+---
 
-Explicit setup:
+## Project inspection
 
-```bash
-git-cli precommit --setup --for python
-git-cli precommit --setup --for fastapi
-git-cli precommit --setup --for django
-git-cli precommit --setup --for laravel
-```
+### Commands
 
-Automatic detection:
+| Command | Parameters | Description |
+|---|---|---|
+| `project detect` | `--json` | Detect application/project type |
+| `project info` | `--json` | Show richer project information |
 
-```bash
-git-cli precommit --setup --scan
-```
-
-Management:
-
-```bash
-git-cli precommit run
-git-cli precommit status
-git-cli precommit list
-git-cli precommit uninstall
-```
-
-The selected preset is stored in `.git-cli-precommit.yaml`. Staged Python/PHP checks operate on materialized Git-index content rather than later unstaged worktree edits.
-
-## Project detection
+Examples:
 
 ```bash
 git-cli project detect
@@ -222,26 +245,106 @@ git-cli project info
 git-cli project info --json
 ```
 
-Current pre-commit project types include Python, FastAPI, Django and Laravel.
+![Project inspection](docs/screenshots/05-project.svg)
 
-## Hook handling
+---
 
-`git-cli precommit --setup ...` respects `core.hooksPath`. If unset, `.git/hooks` is used. The managed pre-commit hook dispatches to security scanning first and application validation second.
-
-## Doctor
+## Repository health
 
 ```bash
-git-cli doctor
+git-cli repo health
 ```
 
-`doctor` diagnoses environment/configuration correctness: repository access, hooks, secret scanners, security config, detected application preset and required runtimes.
+Checks include:
 
-`repo health` is complementary: it reports the quality/state of the repository itself.
+- current branch
+- dirty/clean working tree
+- upstream configuration
+- ahead/behind counts
+- `.gitignore` presence
+- tracked files now matching ignore rules
 
+Example:
+
+```bash
+git-cli repo health
+```
+
+![Repository health](docs/screenshots/06-repo-health.svg)
+
+---
+
+## Cleanup
+
+Cleanup commands map to Git's safe preview/apply modes.
+
+| Command | Description |
+|---|---|
+| `clean preview` | Preview untracked files: equivalent to `git clean -nd` |
+| `clean ignored --preview` | Preview ignored files: equivalent to `git clean -ndX` |
+| `clean ignored --apply` | Delete ignored files/directories: equivalent to `git clean -fdX` |
+
+Examples:
+
+```bash
+git-cli clean preview
+git-cli clean ignored --preview
+git-cli clean ignored --apply
+```
+
+`--apply` is intentionally required for destructive ignored-file cleanup.
+
+![Cleanup examples](docs/screenshots/07-clean.svg)
+
+---
+
+## Large files
+
+### Syntax
+
+```bash
+git-cli large-files scan [--threshold-mb MB]
+```
+
+| Parameter | Default | Description |
+|---|---:|---|
+| `--threshold-mb` | `25` | Minimum tracked blob size to report |
+
+Examples:
+
+```bash
+git-cli large-files scan
+git-cli large-files scan --threshold-mb 50
+git-cli large-files scan --threshold-mb 100
+```
+
+![Large-file scan](docs/screenshots/08-large-files.svg)
+
+---
+
+## Branch inspection
+
+These commands are read-only.
+
+| Command | Description |
+|---|---|
+| `branch merged` | List local branches already merged into current HEAD |
+| `branch stale` | List local branches ordered by commit date |
+
+Examples:
+
+```bash
+git-cli branch merged
+git-cli branch stale
+```
+
+![Branch inspection](docs/screenshots/09-branch.svg)
+
+---
 
 ## PAT management
 
-Named GitHub personal access tokens are stored in a deployment-local YAML file.
+PATs are stored locally and encrypted at rest with AES-256-GCM.
 
 For an installation at:
 
@@ -249,76 +352,91 @@ For an installation at:
 /usr/local/bin/git-cli
 ```
 
-the configuration path is:
+the files are:
 
 ```text
 /usr/local/etc/git-config/pat.yaml
+/usr/local/etc/git-config/pat.key
 ```
 
-The path is derived from the executable installation prefix as:
+Permissions:
 
 ```text
-<prefix>/bin/git-cli
-<prefix>/etc/git-config/pat.yaml
+/usr/local/etc/git-config   0700
+pat.yaml                    0600
+pat.key                     0600
 ```
 
-Override the directory when needed:
+Override the config directory with:
 
 ```bash
 export GIT_CLI_CONFIG_DIR=/custom/config
 ```
 
-Store a PAT:
+### Commands and parameters
+
+| Command | Parameters | Description |
+|---|---|---|
+| `pat create` | `--name NAME --token TOKEN` | Store/update token |
+| `pat create` | `--name NAME --token-stdin` | Read token from stdin; preferred |
+| `pat display` | positional `NAME` or `--name NAME` | Decrypt and print token |
+| `pat list` | none | List stored PAT names |
+| `pat delete` | positional `NAME` or `--name NAME` | Delete token |
+| `pat status` | none | Show file paths, modes and encryption status |
+| `pat secure` | none | Migrate plaintext v0.7.2 entries to encrypted format |
+
+Examples:
 
 ```bash
-git-cli pat create --name release --token <TOKEN>
-```
-
-Safer input that avoids placing the token in shell history or process arguments:
-
-```bash
-printf '%s' "$GITHUB_TOKEN" | git-cli pat create --name release --token-stdin
-```
-
-Display a PAT:
-
-```bash
-git-cli pat display release
-git-cli pat display --name release
-```
-
-List, delete and inspect the PAT store:
-
-```bash
+git-cli pat create --name git-cli --token github_pat_xxx
+printf '%s' "$GITHUB_TOKEN" | git-cli pat create --name git-cli --token-stdin
+git-cli pat display git-cli
+git-cli pat display --name git-cli
 git-cli pat list
-git-cli pat delete release
-git-cli pat delete --name release
 git-cli pat status
 git-cli pat secure
+git-cli pat delete git-cli
+git-cli pat delete --name git-cli
 ```
 
-The directory is created with mode `0700`. `pat.yaml` and the separate encryption key `pat.key` use mode `0600`. PAT values are encrypted with AES-256-GCM and stored as `enc:v1:...` ciphertext in `pat.yaml`. Run `git-cli pat secure` once to migrate plaintext entries created by v0.7.2. The files are never written into the repository.
+Prefer `--token-stdin`: command-line token values can appear in shell history or process listings.
+
+![PAT management](docs/screenshots/10-pat.svg)
+
+---
 
 ## GitHub Actions
 
-List workflow runs:
+### List workflow runs
+
+Syntax:
 
 ```bash
-git-cli actions list --repository r14r/git-cli
-git-cli actions list --repository r14r/git-cli --state failure
-git-cli actions list --repository r14r/git-cli --state success --verbose
+git-cli actions list   --repository OWNER/REPO   [--state STATE]   [--verbose]   [--details]   [--pat NAME]
 ```
 
-Delete all workflow runs matching a state:
+### Delete workflow runs
+
+Syntax:
 
 ```bash
-git-cli actions delete --repository r14r/git-cli --state failure
-git-cli actions delete --repository r14r/git-cli --state cancelled --verbose
+git-cli actions delete   --repository OWNER/REPO   --state STATE   [--verbose]   [--details]   [--pat NAME]
 ```
 
-`actions delete` requires `--state` so an unfiltered bulk delete cannot happen accidentally.
+`delete` requires `--state`; unfiltered bulk deletion is intentionally rejected.
 
-Supported states follow GitHub's workflow-run API:
+### Parameters
+
+| Parameter | Required | Description |
+|---|---|---|
+| `--repository OWNER/REPO` | yes | Repository, e.g. `r14r/git-cli` |
+| `--repository URL` | yes | GitHub URL is also accepted |
+| `--state STATE` | list: no; delete: yes | Filter by GitHub workflow-run status/conclusion |
+| `--verbose` | no | Show only workflow name and effective state |
+| `--details` | no | Show full run details and authentication source |
+| `--pat NAME` | no | Explicit encrypted PAT name; overrides `GITHUB_TOKEN` |
+
+### Supported states
 
 ```text
 completed
@@ -337,81 +455,286 @@ waiting
 pending
 ```
 
-Authentication order:
+### Authentication order
 
-1. explicit `--pat NAME` using encrypted git-cli PAT storage
+1. explicit `--pat NAME`
 2. `GITHUB_TOKEN`
-3. the stored PAT automatically when exactly one PAT exists
+3. automatically use the stored PAT when exactly one exists
+4. anonymous access for public repositories
 
-Public repositories can be listed without authentication. Private repositories require **Actions: read** for a fine-grained PAT, or `repo` for a classic PAT. Deleting runs requires **Actions: write** for a fine-grained PAT. On HTTP 401/403, git-cli now includes GitHub's API error message plus the required permission hint.
+Private repositories require a fine-grained PAT with **Actions: read** for listing. Deleting runs requires **Actions: write**.
 
-`--verbose` shows only workflow name and effective state. `--details` shows the full run information, including the selected authentication source (never the token value), run ID, workflow/title, state/status/conclusion, branch, event, commit SHA, run number/attempt, actor, timestamps, and GitHub URL.
+### Standard list examples
 
+```bash
+git-cli actions list --repository r14r/Templates_Docker-Compose
+git-cli actions list --repository https://github.com/r14r/Templates_Docker-Compose
+git-cli actions list --repository r14r/Templates_Docker-Compose --state failure
+git-cli actions list --repository r14r/Templates_Docker-Compose --pat git-cli
+```
+
+![Actions list](docs/screenshots/11-actions-list.svg)
+
+### Verbose output
+
+`--verbose` intentionally shows only workflow name and state:
+
+```bash
+git-cli actions list   --repository r14r/Templates_Docker-Compose   --verbose   --pat git-cli
+```
+
+Representative output:
+
+```text
+CI              success
+Release         failure
+Security Scan   success
+Runs: 3
+```
+
+![Actions verbose](docs/screenshots/12-actions-verbose.svg)
+
+### Detailed output
+
+`--details` shows repository/authentication plus all available run metadata:
+
+```bash
+git-cli actions list   --repository r14r/Templates_Docker-Compose   --details   --pat git-cli
+```
+
+Fields include:
+
+- repository
+- authentication source
+- run ID
+- workflow/title
+- state/status/conclusion
+- branch
+- event
+- commit SHA
+- run number and attempt
+- actor
+- created/updated timestamps
+- GitHub URL
+
+![Actions details](docs/screenshots/13-actions-details.svg)
+
+### Delete examples
+
+```bash
+git-cli actions delete   --repository r14r/Templates_Docker-Compose   --state failure   --pat git-cli
+
+git-cli actions delete   --repository r14r/Templates_Docker-Compose   --state cancelled   --verbose   --pat git-cli
+
+git-cli actions delete   --repository r14r/Templates_Docker-Compose   --state timed_out   --details   --pat git-cli
+```
+
+![Actions delete](docs/screenshots/14-actions-delete.svg)
+
+---
+
+## Doctor
+
+```bash
+git-cli doctor
+```
+
+Doctor diagnoses:
+
+- Git repository access
+- hooks
+- configured scanners
+- scanner availability
+- security configuration
+- detected application preset
+- required runtimes/tooling
+
+Example:
+
+```bash
+git-cli doctor
+```
+
+![Doctor](docs/screenshots/15-doctor.svg)
+
+---
+
+## Hook dispatcher
+
+The generated application-aware pre-commit hook calls:
+
+```bash
+git-cli hook run pre-commit
+```
+
+Execution order:
+
+1. `git-cli security check-staged`
+2. `git-cli precommit run`
+
+This command is normally invoked by Git rather than manually.
+
+---
 
 ## Justfile
 
-Running `just` without arguments shows the available recipes with short descriptions:
+Running `just` without arguments displays the recipe help:
 
 ```bash
 just
 ```
 
-Useful groups include:
+![Just help](docs/screenshots/16-just.svg)
+
+### Build and development
+
+| Recipe | Description |
+|---|---|
+| `just version` | Show project version/install target |
+| `just check-tools` | Verify Go, Git, Just |
+| `just fmt` | Format source |
+| `just fmt-check` | Check formatting without modification |
+| `just vet` | Run `go vet` |
+| `just test` | Run tests |
+| `just test-v` | Verbose tests |
+| `just test-race` | Race-enabled tests |
+| `just check` | Formatting + vet + tests |
+| `just build` | Build versioned binary |
+| `just install` | Build and install |
+| `just reinstall` | Clean build artifacts then install |
+| `just run ARGS...` | Run from source |
+| `just exec ARGS...` | Build then run binary |
+| `just cli-help` | Show CLI help |
+
+### Diagnostics and Git
 
 ```text
-Build/dev:
-  check-tools, fmt, fmt-check, vet, test, test-v, test-race,
-  check, build, install, reinstall, run, exec, cli-help
-
-Diagnostics:
-  doctor, repo-health, project-detect, project-info,
-  git-status, git-log, git-branches, git-fetch, git-pull,
-  diff, diff-staged
-
-PAT:
-  pat-list, pat-status, pat-secure, pat-display, pat-delete
-
-Gitignore:
-  gitignore-status, gitignore-presets, gitignore-list,
-  gitignore-scan, gitignore-explain, gitignore-tracked
-
-Security/pre-commit:
-  precommit-run, precommit-status, precommit-list,
-  security-status, security-staged, security-check,
-  security-deep, security-history
-
-Cleanup/branches:
-  clean-preview, clean-ignored-preview, clean-ignored-apply,
-  large-files, large-files-mb, branch-merged, branch-stale
-
-GitHub Actions:
-  actions-list, actions-state, actions-verbose,
-  actions-state-verbose, actions-delete, actions-delete-verbose
-
-Release:
-  clean, clean-build, release, release-list
+doctor
+repo-health
+project-detect
+project-info
+git-status
+git-log
+git-branches
+git-fetch
+git-pull
+diff
+diff-staged
 ```
 
-## Update with update-cli
-
-The repository contains `update-cli.yaml`, and `.updater-cli/config.json` uses:
-
-```text
-https://github.com/r14r/git-cli.git
-```
-
-Equivalent initialization:
+### PAT
 
 ```bash
-update-cli init git-cli --from repository --repository https://github.com/r14r/git-cli.git
+just pat-list
+just pat-status
+just pat-secure
+just pat-display git-cli
+just pat-delete git-cli
 ```
 
-The `setup` workflow builds with the version from `VERSION` injected into `main.version` and verifies that `dist/git-cli --version` matches that file before installation. This keeps `update-cli setup` consistent with `just build`.
+### Gitignore
+
+```bash
+just gitignore-status
+just gitignore-presets
+just gitignore-list
+just gitignore-scan
+just gitignore-explain .env
+just gitignore-tracked
+```
+
+### Security and pre-commit
+
+```bash
+just precommit-run
+just precommit-status
+just precommit-list
+just security-status
+just security-staged
+just security-check
+just security-deep
+just security-history
+```
+
+### Cleanup, files and branches
+
+```bash
+just clean-preview
+just clean-ignored-preview
+just clean-ignored-apply
+just large-files
+just large-files-mb 50
+just branch-merged
+just branch-stale
+```
+
+### GitHub Actions
+
+```bash
+just actions-list
+just actions-state failure
+just actions-verbose
+just actions-state-verbose failure
+just actions-delete failure
+just actions-delete-verbose cancelled
+```
+
+### Release
+
+```bash
+just clean
+just clean-build
+just release
+just release-list
+```
+
+---
+
+## update-cli integration
+
+The repository contains `update-cli.yaml`.
+
+Initialize:
+
+```bash
+update-cli init git-cli   --from repository   --repository https://github.com/r14r/git-cli.git
+```
+
+Run setup:
+
+```bash
+update-cli setup
+git-cli --version
+```
+
+The setup workflow:
+
+1. downloads Go modules
+2. runs vet
+3. runs tests
+4. reads `VERSION`
+5. builds with `-X main.version=<VERSION>`
+6. verifies `dist/git-cli --version` equals `VERSION`
+7. installs to `/usr/local/bin/git-cli`
+
+![update-cli setup](docs/screenshots/17-update-cli.svg)
+
+---
 
 ## Exit codes
 
-- `0`: command/check passed or no finding.
-- `1`: finding or actionable repository issue.
-- `2`: configuration, runtime or usage error.
+| Code | Meaning |
+|---:|---|
+| `0` | Success / no finding |
+| `1` | Finding or actionable repository issue |
+| `2` | Usage, configuration, dependency or runtime error |
 
-Git hooks can be bypassed with `git commit --no-verify`; CI or pre-push enforcement remains appropriate when stronger policy enforcement is required.
+Some security commands return `1` when findings are detected so they can block commits or CI.
+
+## Notes
+
+- Commands that inspect repositories normally expect to run inside a Git repository.
+- Destructive cleanup requires explicit `--apply`.
+- GitHub Actions deletion requires `--state`.
+- PAT values are encrypted at rest, but `pat display` intentionally reveals the plaintext token.
+- `git commit --no-verify` can bypass local hooks; use CI or server-side policy when stronger enforcement is required.
