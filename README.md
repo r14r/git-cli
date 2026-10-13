@@ -24,7 +24,7 @@
 - [update-cli integration](#update-cli-integration)
 - [Exit codes](#exit-codes)
 
-## Installation
+> Terminal images in `docs/screenshots/` are representative, reproducible documentation captures with sanitized example data and no real secrets.\n\n## Installation
 
 Build and install from source:
 
