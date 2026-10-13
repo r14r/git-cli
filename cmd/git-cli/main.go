@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"git-cli/internal/app"
+	"git-cli/internal/actionscmd"\n\t"git-cli/internal/app"
 	"git-cli/internal/branchcmd"
 	"git-cli/internal/cleancmd"
 	"git-cli/internal/doctor"
