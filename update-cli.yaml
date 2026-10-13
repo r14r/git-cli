@@ -29,18 +29,27 @@ tasks:
   build:
     requires: [check]
     steps:
-      - name: Build git-cli
-        go:
-          action: build
-          package: ./cmd/git-cli
-          output: "{{ distDir }}/{{ binary }}"
-          args: [-trimpath]
+      - name: Build versioned git-cli
+        shell: |
+          set -eu
+          version="$(tr -d '\r\n' < VERSION)"
+          mkdir -p "{{ distDir }}"
+          go build -trimpath -ldflags "-s -w -X main.version=${version}" -o "{{ distDir }}/{{ binary }}" ./cmd/git-cli
   verify:
     requires: [build]
     steps:
       - name: Verify binary
         assert:
           executable: "{{ distDir }}/{{ binary }}"
+      - name: Verify embedded version
+        shell: |
+          set -eu
+          expected="$(tr -d '\r\n' < VERSION)"
+          actual="$("./{{ distDir }}/{{ binary }}" --version | awk '{print $2}')"
+          if [ "$actual" != "$expected" ]; then
+            echo "Version mismatch: expected $expected, got $actual"
+            exit 1
+          fi
   install:
     requires: [verify]
     steps:

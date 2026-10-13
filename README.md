@@ -2,7 +2,7 @@
 
 `git-cli` is a standalone Go CLI for Git workflow utilities.
 
-Current version: **0.8.3**
+Current version: **0.8.4**
 
 ## Command groups
 
@@ -405,6 +405,8 @@ Equivalent initialization:
 ```bash
 update-cli init git-cli --from repository --repository https://github.com/r14r/git-cli.git
 ```
+
+The `setup` workflow builds with the version from `VERSION` injected into `main.version` and verifies that `dist/git-cli --version` matches that file before installation. This keeps `update-cli setup` consistent with `just build`.
 
 ## Exit codes
 
