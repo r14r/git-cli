@@ -2,7 +2,7 @@
 
 `git-cli` is a standalone Go CLI for Git workflow utilities.
 
-Current version: **0.8.0**
+Current version: **0.8.1**
 
 ## Command groups
 
@@ -347,6 +347,50 @@ Public repositories can be listed without authentication. Deleting runs requires
 
 With `--verbose`, output includes run ID, workflow/title, state/status/conclusion, branch, event, commit SHA, run number/attempt, actor, timestamps, and GitHub URL.
 
+
+## Justfile
+
+Running `just` without arguments shows the available recipes with short descriptions:
+
+```bash
+just
+```
+
+Useful groups include:
+
+```text
+Build/dev:
+  check-tools, fmt, fmt-check, vet, test, test-v, test-race,
+  check, build, install, reinstall, run, exec, cli-help
+
+Diagnostics:
+  doctor, repo-health, project-detect, project-info,
+  git-status, git-log, git-branches, git-fetch, git-pull,
+  diff, diff-staged
+
+PAT:
+  pat-list, pat-status, pat-secure, pat-display, pat-delete
+
+Gitignore:
+  gitignore-status, gitignore-presets, gitignore-list,
+  gitignore-scan, gitignore-explain, gitignore-tracked
+
+Security/pre-commit:
+  precommit-run, precommit-status, precommit-list,
+  security-status, security-staged, security-check,
+  security-deep, security-history
+
+Cleanup/branches:
+  clean-preview, clean-ignored-preview, clean-ignored-apply,
+  large-files, large-files-mb, branch-merged, branch-stale
+
+GitHub Actions:
+  actions-list, actions-state, actions-verbose,
+  actions-state-verbose, actions-delete, actions-delete-verbose
+
+Release:
+  clean-build, release, release-list
+```
 
 ## Update with update-cli
 
