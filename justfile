@@ -61,7 +61,7 @@ install: build
     install -m 0755 dist/{{bin}} {{install_bin}}
 
 # Reinstall the current version.
-reinstall: clean install
+reinstall: clean-build install
 
 # Run git-cli from source with version injection.
 run *args:
@@ -246,6 +246,9 @@ diff:
 # Show staged changes.
 diff-staged:
     git diff --cached
+
+# Remove build/release artifacts only.
+clean: clean-build
 
 # Remove build/release artifacts only.
 clean-build:
