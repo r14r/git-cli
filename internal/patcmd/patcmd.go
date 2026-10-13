@@ -598,7 +598,6 @@ func decryptToken(key []byte, value string) (string, error) {
 	return string(plain), nil
 }
 
-
 func TokenNames() ([]string, error) {
 	s, _, err := loadStore()
 	if err != nil {
