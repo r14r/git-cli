@@ -7,8 +7,8 @@ import (
 
 func TestNormalizeRepository(t *testing.T) {
 	cases := map[string]string{
-		"r14r/git-cli":                    "r14r/git-cli",
-		"https://github.com/r14r/git-cli": "r14r/git-cli",
+		"r14r/git-cli":                        "r14r/git-cli",
+		"https://github.com/r14r/git-cli":     "r14r/git-cli",
 		"https://github.com/r14r/git-cli.git": "r14r/git-cli",
 	}
 	for input, want := range cases {
