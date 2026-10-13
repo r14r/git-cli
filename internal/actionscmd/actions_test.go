@@ -2,6 +2,7 @@ package actionscmd
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 )
 
@@ -44,5 +45,33 @@ func TestEffectiveState(t *testing.T) {
 	}
 	if got := effectiveState(workflowRun{Status: "in_progress"}); got != "in_progress" {
 		t.Fatalf("got %q", got)
+	}
+}
+
+func TestVerbosePrintsOnlyWorkflowAndState(t *testing.T) {
+	var out bytes.Buffer
+	printRun(&out, workflowRun{Name: "CI", Status: "completed", Conclusion: "success", HeadBranch: "main"}, true, false)
+	if got, want := out.String(), "CI\tsuccess\n"; got != want {
+		t.Fatalf("output = %q, want %q", got, want)
+	}
+}
+
+func TestDetailsPrintsFullInformation(t *testing.T) {
+	var out bytes.Buffer
+	run := workflowRun{
+		ID:         42,
+		Name:       "CI",
+		Status:     "completed",
+		Conclusion: "success",
+		HeadBranch: "main",
+		HeadSHA:    "abc123",
+		HTMLURL:    "https://github.com/example/repo/actions/runs/42",
+	}
+	printRun(&out, run, false, true)
+	got := out.String()
+	for _, want := range []string{"Run 42", "Workflow:   CI", "State:      success", "Branch:     main", "Commit:     abc123", "URL:"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("details output missing %q: %q", want, got)
+		}
 	}
 }
