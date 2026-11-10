@@ -33,6 +33,7 @@ Usage:
   git-cli project detect           Detect the current application type
   git-cli project info             Show current project information
   git-cli repo health              Inspect repository health
+  git-cli repo delete <repo> [--yes] Delete a GitHub repository (checked)
   git-cli clean <command>          Safely preview/remove generated files
   git-cli large-files scan         Find large tracked files
   git-cli branch <command>         Inspect merged/stale branches
