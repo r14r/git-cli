@@ -96,7 +96,10 @@ func TestDeleteHelp(t *testing.T) {
 }
 
 func TestParseHTTPStatus(t *testing.T) {
-	for _, tt := range []struct{ raw string; want int }{
+	for _, tt := range []struct {
+		raw  string
+		want int
+	}{
 		{"HTTP/2 200 OK\r\nHeader: value\r\n", 200},
 		{"HTTP/1.1 404 Not Found\r\n", 404},
 		{"gh: connection failed", 0},
