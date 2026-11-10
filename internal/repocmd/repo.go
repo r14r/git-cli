@@ -12,8 +12,11 @@ import (
 )
 
 func Run(args []string, out, errOut io.Writer) int {
-	if len(args) == 0 || args[0] != "health" {
-		fmt.Fprintln(errOut, "usage: git-cli repo health")
+	if len(args) > 0 && args[0] == "delete" {
+		return runDelete(args[1:], out, errOut)
+	}
+	if len(args) != 1 || args[0] != "health" {
+		fmt.Fprintln(errOut, "usage: git-cli repo health | git-cli repo delete <repo> [--yes]")
 		return 2
 	}
 	root, err := gitutil.Root()
