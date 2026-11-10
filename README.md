@@ -274,6 +274,46 @@ git-cli repo health
 
 ---
 
+## Delete a GitHub repository
+
+Use the existing GitHub CLI authorization to delete a remote repository with
+a **pre-check, deletion, and post-check**:
+
+```bash
+gh auth login
+gh auth refresh -h github.com -s delete_repo
+
+git-cli repo delete test              # resolves to r14r/test; prompts
+git-cli repo delete test --yes        # skip confirmation
+git-cli repo delete r14r/test --yes  # explicit owner
+```
+
+After `just install`, the compatibility command `git-repo-delete` is also installed
+and accepts the same repository argument and `--yes` flag.
+
+Successful output:
+
+```text
+Repository: r14r/test
+
+1. Checking Repo:     EXISTS
+2. Deleting Repo:     DELETING
+3. Checking Repo:     DELETED
+```
+
+The initial check skips deletion if the repository is not visible.
+Authentication, connectivity, and other API errors abort deletion instead
+of treating the repository as absent. `DELETED` is shown only if
+`gh repo delete` succeeded and the post-check reports HTTP 404.
+GitHub can also return HTTP 404 for inaccessible private repositories.
+
+**Warning:** deletion removes GitHub-hosted data (including issues, pull requests,
+and releases), not just the local clone. A `git clone --mirror` backup
+preserves Git history but not all GitHub metadata. There is no automatic
+backup in this command.
+
+---
+
 ## Cleanup
 
 Cleanup commands map to Git's safe preview/apply modes.
