@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Compatibility alias for the verified native git-cli repository deletion command.
+set -euo pipefail
+exec git-cli repo delete "$@"

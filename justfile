@@ -59,6 +59,7 @@ build:
 # Build and install to /usr/local/bin.
 install: build
     install -m 0755 dist/{{bin}} {{install_bin}}
+    install -m 0755 scripts/git-repo-delete {{install_prefix}}/bin/git-repo-delete
 
 # Reinstall the current version.
 reinstall: clean-build install
@@ -82,6 +83,14 @@ doctor:
 # Show repository health.
 repo-health:
     just run repo health
+
+# Delete a GitHub repository interactively. Usage: just repo-delete test
+repo-delete target:
+    just run repo delete "{{target}}"
+
+# Delete a GitHub repository without interactive confirmation. Use with care.
+repo-delete-yes target:
+    just run repo delete "{{target}}" --yes
 
 # Detect project type.
 project-detect:
@@ -257,7 +266,7 @@ clean-build:
 # Build a release ZIP and checksum.
 release: clean-build check build
     mkdir -p release/git-cli-v{{version}}
-    cp -R cmd internal docs go.mod VERSION README.md LICENSE .git-cli.yaml .gitignore update-cli.yaml .updater-cli justfile release/git-cli-v{{version}}/
+    cp -R cmd internal scripts docs go.mod VERSION README.md LICENSE .git-cli.yaml .gitignore update-cli.yaml .updater-cli justfile release/git-cli-v{{version}}/
     (cd release && zip -qr git-cli-v{{version}}.zip git-cli-v{{version}})
     shasum -a 256 release/git-cli-v{{version}}.zip
 
