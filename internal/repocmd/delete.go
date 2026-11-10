@@ -109,6 +109,10 @@ WARNING: Deleting a repository removes its GitHub-hosted data.`)
 }
 
 func runDelete(args []string, out, errOut io.Writer) int {
+	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
+		deleteHelp(out)
+		return 0
+	}
 	if _, err := exec.LookPath("gh"); err != nil {
 		fmt.Fprintln(errOut, "GitHub CLI (gh) is not installed or not in PATH")
 		return 2
