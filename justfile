@@ -30,7 +30,7 @@ fmt:
 
 # Verify formatting without modifying files.
 fmt-check:
-    @files="$$(gofmt -l cmd internal)";     if [ -n "$$files" ]; then       echo "Files require gofmt:";       echo "$$files";       exit 1;     fi
+    @files="$(gofmt -l cmd internal)";     if [ -n "$files" ]; then       echo "Files require gofmt:";       echo "$files";       exit 1;     fi
 
 # Run go vet.
 vet:
