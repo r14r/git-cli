@@ -13,7 +13,19 @@ import (
 	"git-cli/internal/precommit"
 )
 
-func Run(out, errOut io.Writer) int {
+func Run(out, errOut io.Writer) int { return RunArgs(nil, out, errOut) }
+
+func RunArgs(args []string, out, errOut io.Writer) int {
+	fix := false
+	if len(args) == 1 && args[0] == "--fix" {
+		fix = true
+	} else if len(args) == 1 && (args[0] == "--help" || args[0] == "-h" || args[0] == "help") {
+		fmt.Fprintln(out, "Usage: git-cli doctor [--fix]")
+		return 0
+	} else if len(args) != 0 {
+		fmt.Fprintln(errOut, "Usage: git-cli doctor [--fix]")
+		return 2
+	}
 	root, err := gitutil.Root()
 	if err != nil {
 		fmt.Fprintln(errOut, "✗ Git repository:", err)
@@ -22,6 +34,10 @@ func Run(out, errOut io.Writer) int {
 	fmt.Fprintln(out, "Git CLI Doctor")
 	fmt.Fprintf(out, "Repository: %s\n\n", root)
 	problems := 0
+	if fix {
+		applyFixes(root, out, errOut)
+		fmt.Fprintln(out, "\nRechecking repository...")
+	}
 
 	fmt.Fprintln(out, "Repository")
 	fmt.Fprintln(out, "  ✓ Git repository")
@@ -34,10 +50,10 @@ func Run(out, errOut io.Writer) int {
 	}
 	if hooks != "" {
 		b, err := os.ReadFile(filepath.Join(hooks, "pre-commit"))
-		if err == nil && (strings.Contains(string(b), "git-cli hook run pre-commit") || strings.Contains(string(b), "git-cli security check-staged")) {
+		if err == nil && (strings.Contains(string(b), "git-cli hook run pre-commit") || precommit.ManagedHook(string(b))) {
 			fmt.Fprintln(out, "  ✓ git-cli pre-commit hook")
 		} else {
-			fmt.Fprintln(out, "  ! git-cli pre-commit hook not installed")
+			fmt.Fprintln(out, "  ! git-cli pre-commit hook not installed\n    Fix: git-cli doctor --fix (existing custom hooks are preserved)")
 		}
 	}
 
@@ -52,7 +68,7 @@ func Run(out, errOut io.Writer) int {
 			continue
 		}
 		if tool.required {
-			fmt.Fprintf(out, "  ✗ %s missing\n", tool.name)
+			fmt.Fprintf(out, "  ✗ %s missing\n    Fix: %s\n", tool.name, suggestion(tool.name))
 			problems++
 		} else {
 			fmt.Fprintf(out, "  ! %s optional / missing\n", tool.name)
@@ -61,7 +77,7 @@ func Run(out, errOut io.Writer) int {
 	if _, err := os.Stat(filepath.Join(root, config.DefaultFilename)); err == nil {
 		fmt.Fprintf(out, "  ✓ %s\n", config.DefaultFilename)
 	} else {
-		fmt.Fprintf(out, "  ! %s not configured\n", config.DefaultFilename)
+		fmt.Fprintf(out, "  ! %s not configured\n    Fix: git-cli doctor --fix\n", config.DefaultFilename)
 	}
 
 	fmt.Fprintln(out, "\nApplication")
@@ -74,7 +90,7 @@ func Run(out, errOut io.Writer) int {
 			if _, err := exec.LookPath(tool); err == nil {
 				fmt.Fprintf(out, "  ✓ %s\n", tool)
 			} else {
-				fmt.Fprintf(out, "  ✗ %s missing\n", tool)
+				fmt.Fprintf(out, "  ✗ %s missing\n    Fix: %s\n", tool, suggestion(tool))
 				problems++
 			}
 		}
@@ -82,7 +98,7 @@ func Run(out, errOut io.Writer) int {
 	if cfg, err := precommit.Load(root); err == nil {
 		fmt.Fprintf(out, "  ✓ %s (preset=%s)\n", precommit.ConfigFilename, cfg.Preset)
 	} else {
-		fmt.Fprintf(out, "  ! %s not configured\n", precommit.ConfigFilename)
+		fmt.Fprintf(out, "  ! %s not configured\n    Fix: git-cli doctor --fix (if a supported preset is detected)\n", precommit.ConfigFilename)
 	}
 
 	fmt.Fprintln(out)
