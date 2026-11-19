@@ -60,6 +60,7 @@ build:
 install: build
     install -m 0755 dist/{{bin}} {{install_bin}}
     install -m 0755 scripts/git-repo-delete {{install_prefix}}/bin/git-repo-delete
+    install -m 0755 scripts/git-cl-doctor {{install_prefix}}/bin/git-cl-doctor
 
 # Reinstall the current version.
 reinstall: clean-build install
@@ -79,6 +80,14 @@ cli-help:
 # Run git-cli doctor.
 doctor:
     just run doctor
+
+# Apply safe doctor fixes.
+doctor-fix:
+    just run doctor --fix
+
+# Interactive command menu.
+wizard:
+    just run wizard
 
 # Show repository health.
 repo-health:
@@ -199,6 +208,18 @@ large-files-mb mb:
 # List merged local branches.
 branch-merged:
     just run branch merged
+
+# Preview merged local and remote branches.
+branch-clean-preview:
+    just run branch --clean --dry-run
+
+# Clean verified merged branches with confirmation.
+branch-clean:
+    just run branch --clean
+
+# Clean verified merged branches without confirmation.
+branch-clean-yes:
+    just run branch --clean --yes
 
 # List local branches ordered by age.
 branch-stale:

@@ -15,7 +15,8 @@ func Run(args []string, out, errOut io.Writer) int {
 
 Usage:
   git-cli branch merged
-  git-cli branch stale`)
+  git-cli branch stale
+  git-cli branch --clean [--yes|--dry-run]`)
 		return 0
 	}
 	root, err := gitutil.Root()
@@ -24,6 +25,8 @@ Usage:
 		return 2
 	}
 	switch args[0] {
+	case "--clean", "clean":
+		return clean(root, args[1:], out, errOut)
 	case "merged":
 		return merged(root, out, errOut)
 	case "stale":

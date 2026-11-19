@@ -778,3 +778,18 @@ Some security commands return `1` when findings are detected so they can block c
 - GitHub Actions deletion requires `--state`.
 - PAT values are encrypted at rest, but `pat display` intentionally reveals the plaintext token.
 - `git commit --no-verify` can bypass local hooks; use CI or server-side policy when stronger enforcement is required.
+
+## Branch cleanup and repair (0.12.0)
+
+```bash
+git-cli branch --clean --dry-run
+git-cli branch --clean
+git-cli branch --clean --yes
+git-cl-doctor
+git-cli doctor --fix
+git-cli wizard
+```
+
+Cleanup fetches origin and checks the actual default branch. Only ancestor tips or exact tips of verified same-repository merged GitHub PRs are eligible. Current/worktree branches and common permanent branches are preserved. Remote deletes use an exact SHA lease. Dry-run fetches refs but never deletes or prunes. Other remotes are not touched. Missing gh or authorization conservatively disables squash-merge recognition. Doctor creates missing local configuration and hooks without overwriting existing files; packages and custom hooks require manual review. The wizard is a one-shot interactive menu.
+
+See [roadmap](docs/roadmap.md) and [command guide](docs/commands.md).

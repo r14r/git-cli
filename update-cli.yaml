@@ -58,6 +58,11 @@ tasks:
           source: "{{ distDir }}/{{ binary }}"
           target: "/usr/local/bin/{{ binary }}"
           mode: "0755"
+      - name: Install command aliases
+        shell: |
+          set -eu
+          install -m 0755 scripts/git-repo-delete /usr/local/bin/git-repo-delete
+          install -m 0755 scripts/git-cl-doctor /usr/local/bin/git-cl-doctor
   clean:
     steps:
       - name: Clean build artifacts

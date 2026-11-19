@@ -16,6 +16,7 @@ import (
 	"git-cli/internal/precommitcmd"
 	"git-cli/internal/projectcmd"
 	"git-cli/internal/repocmd"
+	"git-cli/internal/wizard"
 )
 
 var version = "dev"
@@ -37,9 +38,11 @@ Usage:
   git-cli clean <command>          Safely preview/remove generated files
   git-cli large-files scan         Find large tracked files
   git-cli branch <command>         Inspect merged/stale branches
+  git-cli branch --clean           Clean verified merged local/remote branches
   git-cli pat <command>            Store/manage Git PATs in local YAML config
   git-cli actions <command>        List/delete GitHub Actions workflow runs
-  git-cli doctor                   Diagnose repository/tooling setup
+  git-cli doctor [--fix]           Diagnose and safely repair repository/tooling setup
+  git-cli wizard                   Interactive command menu
   git-cli version                  Show version
 `)
 		return
@@ -67,7 +70,9 @@ Usage:
 	case "actions":
 		os.Exit(actionscmd.Run(args[1:], os.Stdout, os.Stderr))
 	case "doctor":
-		os.Exit(doctor.Run(os.Stdout, os.Stderr))
+		os.Exit(doctor.RunArgs(args[1:], os.Stdout, os.Stderr))
+	case "wizard":
+		os.Exit(wizard.Run(os.Stdin, os.Stdout, os.Stderr))
 	case "hook":
 		if len(args) == 3 && args[1] == "run" && args[2] == "pre-commit" {
 			code := app.New().Run([]string{"security", "check-staged"})
