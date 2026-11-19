@@ -12,7 +12,7 @@ import (
 
 type candidate struct {
 	ref, sha, name string
-	remote bool
+	remote         bool
 }
 
 func gitRun(root string, args ...string) (string, error) {
@@ -55,10 +55,10 @@ func mergedPRs(root, base string) map[string]bool {
 		return result
 	}
 	type pr struct {
-		HeadRefName string
-		HeadRefOid string
+		HeadRefName       string
+		HeadRefOid        string
 		IsCrossRepository bool
-		MergeCommit struct{ Oid string }
+		MergeCommit       struct{ Oid string }
 	}
 	cmd := exec.Command("gh", "pr", "list", "--repo", slug, "--state", "merged", "--base", base, "--limit", "1000", "--json", "headRefName,headRefOid,isCrossRepository,mergeCommit")
 	cmd.Dir = root

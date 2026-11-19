@@ -13,7 +13,7 @@ import (
 func Run(in io.Reader, out, errOut io.Writer) int {
 	items := []struct {
 		label string
-		args []string
+		args  []string
 	}{
 		{"Repository health", []string{"repo", "health"}},
 		{"Doctor", []string{"doctor"}},
